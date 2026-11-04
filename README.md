@@ -41,7 +41,7 @@ Copy `.env.example` to `.env.local` and fill in what you need:
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page. |
 | `MCP_API_KEY` | Bearer token assistants must send to `/api/mcp`. Unset = open, fine on localhost only. |
-| `HOUSEHOLD_TIMEZONE` | What "tonight" means. Default `America/Chicago`. |
+| `HOUSEHOLD_TIMEZONE` | What "tonight" means. Default `America/New_York`. |
 | `DATABASE_URL` | Use a real Postgres (e.g. Supabase) instead of the embedded one. |
 
 ## Connect an AI assistant

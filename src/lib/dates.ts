@@ -15,7 +15,7 @@ export const DAY_NAMES = [
 ] as const;
 
 export function householdTimezone(): string {
-  return process.env.HOUSEHOLD_TIMEZONE || "America/Chicago";
+  return process.env.HOUSEHOLD_TIMEZONE || "America/New_York";
 }
 
 /** Today's calendar date in the household timezone, as YYYY-MM-DD. */
