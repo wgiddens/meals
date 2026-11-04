@@ -103,9 +103,12 @@ grocery list?"
 | `check_grocery_item` | Tick an item off (or back on) by id or name; returns what's left |
 | `remove_grocery_item` | Take an item off the list by id or name |
 
-Tools that take an id *or* a name/title resolve a case-insensitive exact
-match first, then a partial match. If several recipes or items match, the tool
-returns an error listing the candidates with their ids rather than guessing.
+Tools that change data and take an id *or* a name/title (`plan_meal`,
+`rate_recipe`, `update_recipe`, `check_grocery_item`, `remove_grocery_item`)
+resolve a case-insensitive exact match first, then a partial match. If several
+recipes or items match, the tool returns an error listing the candidates with
+their ids rather than guessing. The read-only `get_recipe` returns the best
+match. `rate_recipe` takes a rating, a note, or both.
 There is deliberately no delete-recipe tool; deleting is a website action.
 
 ## Scripts

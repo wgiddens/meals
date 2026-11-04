@@ -93,6 +93,27 @@ async function main() {
     threw = true;
   }
   assert(threw, "rateRecipe rejects a rating outside 1-5");
+  const noted = await rateRecipe(pasta.id, undefined, "try penne next time");
+  assert(
+    noted.rating === 5 && noted.notes === `${rated2.notes}\n\ntry penne next time`,
+    "rateRecipe with only a note appends it and keeps the rating",
+  );
+  threw = false;
+  try {
+    await rateRecipe(pasta.id, undefined, "   ");
+  } catch {
+    threw = true;
+  }
+  assert(threw, "rateRecipe with neither a rating nor a note throws");
+  assert((await findRecipesByTitle("smoke", 1)).length === 1, "findRecipesByTitle honours its limit");
+  let zodName = "";
+  try {
+    await patchRecipe(pasta.id, { title: "  " });
+  } catch (err) {
+    zodName = err instanceof Error ? err.name : "";
+  }
+  assert(zodName === "ZodError", "patchRecipe rejects an empty title with a ZodError");
+  assert((await getRecipe(pasta.id))!.title === "Smoke Pasta", "a rejected patch changes nothing");
 
   const patched = await patchRecipe(pasta.id, { cookMinutes: 20, tags: ["Italian", "italian", "Pasta"] });
   assert(patched.cookMinutes === 20 && patched.prepMinutes === 10, "patchRecipe changes only the given fields");

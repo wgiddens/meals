@@ -231,18 +231,21 @@ export async function updateRecipe(
 ): Promise<RecipeWithIngredients> {
   const input = recipeInputSchema.parse(raw);
   const db = await getDb();
-  const [row] = await db
-    .update(recipes)
-    .set({ ...toRecipeRow(input), updatedAt: new Date() })
-    .where(eq(recipes.id, id))
-    .returning();
-  if (!row) throw new Error("Recipe not found");
-  await db.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
-  if (input.ingredients.length) {
-    await db
-      .insert(recipeIngredients)
-      .values(toIngredientRows(id, input.ingredients));
-  }
+  // One transaction so a failure can never leave the recipe with no ingredients.
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(recipes)
+      .set({ ...toRecipeRow(input), updatedAt: new Date() })
+      .where(eq(recipes.id, id))
+      .returning();
+    if (!row) throw new Error("Recipe not found");
+    await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
+    if (input.ingredients.length) {
+      await tx
+        .insert(recipeIngredients)
+        .values(toIngredientRows(id, input.ingredients));
+    }
+  });
   return (await getRecipe(id))!;
 }
 
@@ -270,36 +273,42 @@ export async function patchRecipe(
   if (patch.instructions !== undefined) set.instructions = patch.instructions || null;
   if (patch.notes !== undefined) set.notes = patch.notes || null;
 
-  const [row] = await db.update(recipes).set(set).where(eq(recipes.id, id)).returning();
-  if (!row) throw new Error("Recipe not found");
-  if (patch.ingredients !== undefined) {
-    await db.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
-    if (patch.ingredients.length) {
-      await db
-        .insert(recipeIngredients)
-        .values(toIngredientRows(id, patch.ingredients));
+  const ingredients = patch.ingredients;
+  await db.transaction(async (tx) => {
+    const [row] = await tx.update(recipes).set(set).where(eq(recipes.id, id)).returning();
+    if (!row) throw new Error("Recipe not found");
+    if (ingredients !== undefined) {
+      await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
+      if (ingredients.length) {
+        await tx.insert(recipeIngredients).values(toIngredientRows(id, ingredients));
+      }
     }
-  }
+  });
   return (await getRecipe(id))!;
 }
 
 /**
- * Record how the family liked a recipe (1-5). An optional note is appended
- * to the recipe's notes as its own paragraph, so "we had it, it was a 4,
- * needs more salt" lands in one call without losing the existing notes.
+ * Record how the family liked a recipe (1-5) and/or append a note to its
+ * notes as a new paragraph, so "we had it, it was a 4, needs more salt" lands
+ * in one call without losing the existing notes. Either may be omitted, but
+ * not both. Omitting the rating leaves the current one untouched.
  */
 export async function rateRecipe(
   id: string,
-  rating: number,
+  rating?: number | null,
   note?: string | null,
 ): Promise<RecipeWithIngredients> {
-  const parsedRating = z.number().int().min(1).max(5).parse(rating);
   const trimmed = note?.trim();
-  if (!trimmed) return patchRecipe(id, { rating: parsedRating });
-  const existing = await getRecipe(id);
-  if (!existing) throw new Error("Recipe not found");
-  const notes = existing.notes ? `${existing.notes}\n\n${trimmed}` : trimmed;
-  return patchRecipe(id, { rating: parsedRating, notes });
+  const hasRating = rating !== undefined && rating !== null;
+  if (!hasRating && !trimmed) throw new Error("Give a rating, a note, or both.");
+  const patch: RecipePatch = {};
+  if (hasRating) patch.rating = z.number().int().min(1).max(5).parse(rating);
+  if (trimmed) {
+    const existing = await getRecipe(id);
+    if (!existing) throw new Error("Recipe not found");
+    patch.notes = existing.notes ? `${existing.notes}\n\n${trimmed}` : trimmed;
+  }
+  return patchRecipe(id, patch);
 }
 
 export async function deleteRecipe(id: string): Promise<void> {

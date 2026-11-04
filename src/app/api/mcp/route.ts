@@ -68,9 +68,20 @@ function text(value: unknown) {
 }
 
 function errorResult(err: unknown) {
-  const message = err instanceof Error ? err.message : String(err);
+  let message: string;
+  if (err instanceof z.ZodError) {
+    // "title: Title is required; sourceUrl: Invalid URL" rather than raw issue JSON.
+    message = err.issues
+      .map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message))
+      .join("; ");
+  } else {
+    message = err instanceof Error ? err.message : String(err);
+  }
   return { isError: true, content: [{ type: "text" as const, text: message }] };
 }
+
+/** How many candidates an ambiguity error lists before saying "N+". */
+const MAX_CANDIDATES = 10;
 
 /** The full recipe shape returned by get_recipe and update_recipe. */
 function recipeToJson(recipe: RecipeWithIngredients) {
@@ -102,14 +113,18 @@ async function resolveRecipe(recipe_id?: string, recipe_title?: string) {
     return r;
   }
   if (recipe_title) {
-    const matches = await findRecipesByTitle(recipe_title);
+    // Fetch one extra so we can tell "exactly 10" from "more than 10".
+    const matches = await findRecipesByTitle(recipe_title, MAX_CANDIDATES + 1);
     if (matches.length === 1) return matches[0];
     if (matches.length === 0) {
       throw new Error(`No recipe matching "${recipe_title}". Use list_recipes to search.`);
     }
-    const options = matches.map((m) => `"${m.title}" (recipe_id ${m.id})`).join(", ");
+    const truncated = matches.length > MAX_CANDIDATES;
+    const shown = matches.slice(0, MAX_CANDIDATES);
+    const options = shown.map((m) => `"${m.title}" (recipe_id ${m.id})`).join(", ");
+    const count = truncated ? `${MAX_CANDIDATES}+` : String(matches.length);
     throw new Error(
-      `"${recipe_title}" matches ${matches.length} recipes: ${options}. Call again with recipe_id or a more specific recipe_title.`,
+      `"${recipe_title}" matches ${count} recipes: ${options}${truncated ? ", ..." : ""}. Call again with recipe_id or a more specific recipe_title.`,
     );
   }
   throw new Error("Provide recipe_id or recipe_title.");
@@ -227,24 +242,21 @@ const handler = createMcpHandler(
           "Set what's for supper on a date. Give a recipe_id or recipe_title to plan a recipe from the book, or a note like 'leftovers' or 'pizza night'. Omit both to clear the day.",
         inputSchema: z.object({
           date: dateArg,
-          recipe_id: z.string().optional(),
-          recipe_title: z.string().optional().describe("Fuzzy-matched against recipe titles"),
+          recipe_id: z.string().optional().describe("Exact recipe id, if known."),
+          recipe_title: z
+            .string()
+            .optional()
+            .describe(
+              "Recipe title to match instead of recipe_id. Case-insensitive; a partial title works if it matches only one recipe.",
+            ),
           note: z.string().optional(),
         }),
       },
       async ({ date, recipe_id, recipe_title, note }) => {
         try {
           const iso = resolveDate(date);
-          let recipeId: string | null = null;
-          if (recipe_id) {
-            const r = await getRecipe(recipe_id);
-            if (!r) throw new Error(`No recipe with id ${recipe_id}`);
-            recipeId = r.id;
-          } else if (recipe_title) {
-            const r = await findRecipeByTitle(recipe_title);
-            if (!r) throw new Error(`No recipe matching "${recipe_title}". Use list_recipes to search.`);
-            recipeId = r.id;
-          }
+          const recipeId =
+            recipe_id || recipe_title ? (await resolveRecipe(recipe_id, recipe_title)).id : null;
           const meal = await setMeal({ date: iso, recipeId, note: note ?? null });
           return text({ ok: true, date: iso, summary: describeMeal({ date: iso, meal }) });
         } catch (err) {
@@ -408,7 +420,7 @@ const handler = createMcpHandler(
       {
         title: "Rate a recipe",
         description:
-          "Record the family's rating (1-5) for a recipe after eating it ('it was a 4'). Optionally append a note to the recipe's notes, e.g. 'kids wanted more cheese'. Replaces any previous rating.",
+          "Record the family's rating (1-5) for a recipe after eating it ('it was a 4'), append a remark to the recipe's notes ('needs more salt'), or both. Give at least one of rating or note. A rating replaces the previous one; omitting it leaves the rating unchanged.",
         inputSchema: z.object({
           recipe_id: z.string().optional().describe("Exact recipe id, if known."),
           recipe_title: z
@@ -417,22 +429,36 @@ const handler = createMcpHandler(
             .describe(
               "Recipe title to match instead of recipe_id. Case-insensitive; a partial title works if it matches only one recipe.",
             ),
-          rating: z.number().int().min(1).max(5).describe("1 (nobody ate it) to 5 (everyone wants it again)."),
+          rating: z
+            .number()
+            .int()
+            .min(1)
+            .max(5)
+            .optional()
+            .describe("1 (nobody ate it) to 5 (everyone wants it again). Omit to add only a note."),
           note: z
             .string()
             .optional()
-            .describe("Optional remark to append to the recipe's notes as a new paragraph."),
+            .describe("Remark to append to the recipe's notes as a new paragraph."),
         }),
       },
       async ({ recipe_id, recipe_title, rating, note }) => {
         try {
+          if (rating === undefined && !note?.trim()) {
+            throw new Error("Give a rating, a note, or both.");
+          }
           const found = await resolveRecipe(recipe_id, recipe_title);
           const recipe = await rateRecipe(found.id, rating, note);
+          const hasNote = Boolean(note?.trim());
+          const summary =
+            rating !== undefined
+              ? `Rated ${recipe.title} ${rating}/5${hasNote ? " and added a note" : ""}.`
+              : `Added a note to ${recipe.title}.`;
           return text({
             ok: true,
             recipe: summarizeRecipe(recipe),
             notes: recipe.notes,
-            summary: `Rated ${recipe.title} ${rating}/5${note ? " and added a note" : ""}.`,
+            summary,
           });
         } catch (err) {
           return errorResult(err);
@@ -456,7 +482,7 @@ const handler = createMcpHandler(
             ),
           title: z.string().optional().describe("New title."),
           description: z.string().nullable().optional().describe("One or two sentences. null clears it."),
-          source_url: z.string().nullable().optional().describe("Where the recipe came from. null clears it."),
+          source_url: z.string().url().nullable().optional().describe("Where the recipe came from, a full URL. null clears it."),
           servings: z.number().int().positive().nullable().optional(),
           prep_minutes: z.number().int().nonnegative().nullable().optional(),
           cook_minutes: z.number().int().nonnegative().nullable().optional(),
@@ -464,7 +490,7 @@ const handler = createMcpHandler(
           rating: z.number().int().min(1).max(5).nullable().optional().describe("Family rating 1-5. null clears it."),
           tags: z.array(z.string()).optional().describe("Replaces the tag list. Lowercased and de-duplicated."),
           instructions: z.string().nullable().optional().describe("Full replacement of the steps, one per line."),
-          notes: z.string().nullable().optional().describe("Full replacement of the notes. To append a remark, use rate_recipe."),
+          notes: z.string().nullable().optional().describe("Full replacement of the notes. To append a remark without touching the rating, use rate_recipe with just a note."),
           ingredients: z
             .array(
               z.object({
@@ -587,7 +613,8 @@ const handler = createMcpHandler(
         try {
           const flag = checked ?? true;
           const { item } = await resolveGroceryItem(item_id, name);
-          const updated = (await setItemChecked(item.id, flag)) ?? { ...item, checked: flag };
+          const updated = await setItemChecked(item.id, flag);
+          if (!updated) throw new Error(`"${formatItem(item)}" is no longer on the list.`);
           const list = (await getCurrentList())!;
           const remaining = uncheckedCount(list.items);
           return text({
@@ -619,7 +646,8 @@ const handler = createMcpHandler(
       async ({ item_id, name }) => {
         try {
           const { item } = await resolveGroceryItem(item_id, name);
-          const removed = (await removeItem(item.id)) ?? item;
+          const removed = await removeItem(item.id);
+          if (!removed) throw new Error(`"${formatItem(item)}" is no longer on the list.`);
           const list = (await getCurrentList())!;
           const remaining = uncheckedCount(list.items);
           return text({
