@@ -32,7 +32,7 @@ async function main() {
   );
   const { parseIngredientLine, guessCategory, toDraftIngredient } = await import("@/lib/import/ingredients");
   const { htmlToText, pageTitle, decodeEntities } = await import("@/lib/import/html");
-  const { validateImportUrl, ImportUrlError } = await import("@/lib/import/fetch");
+  const { validateImportUrl, ImportUrlError, isPrivateAddress } = await import("@/lib/import/fetch");
 
   // --- durations, yields, steps ------------------------------------------------
   eq(isoDurationToMinutes("PT1H30M"), 90, "PT1H30M is 90 minutes");
@@ -96,6 +96,20 @@ async function main() {
   eq(parseIngredientLine("1.5 kg potatoes"), { name: "potatoes", quantity: 1.5, unit: "kg", note: null }, "decimal + kg");
   eq(parseIngredientLine("4 cloves garlic, minced"), { name: "garlic", quantity: 4, unit: "clove", note: "minced" }, "cloves");
   eq(parseIngredientLine("2 to 3 cups water"), { name: "water", quantity: 2, unit: "cup", note: "2–3" }, "'to' range");
+  eq(parseIngredientLine("3 Tbsp. soy sauce"), { name: "soy sauce", quantity: 3, unit: "tbsp", note: null }, "'Tbsp.' with a period");
+  eq(parseIngredientLine("1 lb. chicken"), { name: "chicken", quantity: 1, unit: "lb", note: null }, "'lb.' with a period");
+  eq(parseIngredientLine("2 c. flour"), { name: "flour", quantity: 2, unit: "cup", note: null }, "'c.' with a period");
+  eq(parseIngredientLine(".5 tsp salt"), { name: "salt", quantity: 0.5, unit: "tsp", note: null }, "leading '.5'");
+  eq(
+    instructionsToText(["Mix.", "Stir.", "3. Bake.", "Cool."]),
+    "1. Mix.\n2. Stir.\n3. Bake.\n4. Cool.",
+    "pre-numbered step does not reset numbering",
+  );
+  eq(
+    instructionsToText(["Mix.", "5. Bake.", "Cool."]),
+    "1. Mix.\n5. Bake.\n6. Cool.",
+    "numbering continues from a step's own number",
+  );
 
   eq(guessCategory("boneless skinless chicken thighs"), "meat", "chicken is meat");
   eq(guessCategory("chicken broth"), "pantry", "chicken broth is pantry");
@@ -156,6 +170,24 @@ async function main() {
     eq(lasagna.ingredients[1], { name: "onion", quantity: 1, unit: null, note: "large; diced", category: "produce" }, "graph: '1 large onion, diced'");
     eq(lasagna.ingredients[3], { name: "crushed tomatoes", quantity: 28, unit: "oz", note: null, category: "pantry" }, "graph: ounces -> oz, canned tomatoes are pantry");
     eq(lasagna.ingredients[10], { name: "nutmeg", quantity: null, unit: "pinch", note: null, category: "spices" }, "graph: pinch of nutmeg");
+    eq(lasagna.ingredients.length, 16, "graph: all ingredient lines kept");
+    eq(lasagna.ingredients[12], { name: "Italian sausage", quantity: 1, unit: "lb", note: null, category: "meat" }, "graph: 'lb.' with a period");
+    eq(lasagna.ingredients[13], { name: "water", quantity: 2, unit: "cup", note: null, category: "other" }, "graph: 'c.' with a period");
+    eq(lasagna.ingredients[14], { name: "olive oil", quantity: 3, unit: "tbsp", note: null, category: "pantry" }, "graph: 'Tbsp.' with a period");
+    eq(lasagna.ingredients[15], { name: "red pepper flakes", quantity: 0.5, unit: "tsp", note: null, category: "spices" }, "graph: leading '.5'");
+  }
+
+  // --- fixture 4: a pre-numbered step in the middle --------------------------------
+  const bread = extractRecipeFromJsonLd(read("prenumbered-steps.html"));
+  assert(bread, "pre-numbered fixture yields a draft");
+  if (bread) {
+    eq(
+      bread.instructions.split("\n").map((l) => l.split(".")[0]),
+      ["1", "2", "3", "4", "5"],
+      "pre-numbered: numbering continues after a step that keeps its own number",
+    );
+    eq(bread.servings, 6, "pre-numbered: 'Serves 6'");
+    eq(bread.ingredients[1], { name: "butter", quantity: 4, unit: "tbsp", note: "softened", category: "dairy" }, "pre-numbered: '4 Tbsp. butter, softened'");
   }
 
   // --- fixture 3: no recipe --------------------------------------------------------
@@ -187,12 +219,28 @@ async function main() {
   rejects("http://172.20.0.1/", "172.16/12");
   rejects("http://169.254.169.254/latest/meta-data", "link-local / cloud metadata");
   rejects("http://[::1]/", "IPv6 loopback");
+  rejects("http://[::ffff:7f00:1]/", "IPv4-mapped loopback in hex form");
+  rejects("http://[0:0:0:0:0:ffff:a00:1]/", "IPv4-mapped 10.0.0.1, fully written out");
+  rejects("http://[64:ff9b::a9fe:a9fe]/", "NAT64 of 169.254.169.254");
+  rejects("http://[2002:c0a8:101::1]/", "6to4 of 192.168.1.1");
   rejects("http://[fd00::1]/", "IPv6 unique local");
   rejects("http://[::ffff:127.0.0.1]/", "IPv4-mapped loopback");
   rejects("http://intranet/", "bare hostname");
   rejects("http://printer.local/", ".local");
   rejects("http://user:pw@example.com/", "credentials in URL");
   eq(validateImportUrl("https://www.example.com/recipe#tips").toString(), "https://www.example.com/recipe", "accepts a public https URL and drops the fragment");
+  eq(validateImportUrl("http://[2606:4700::1111]/").hostname, "[2606:4700::1111]", "accepts a public IPv6 literal");
+
+  // Address classification by value, whatever the spelling.
+  const privateCases = [
+    "::", "::1", "::ffff:7f00:1", "0:0:0:0:0:ffff:a00:1", "::ffff:127.0.0.1", "::ffff:192.168.1.1",
+    "::ffff:a9fe:a9fe", "::127.0.0.1", "64:ff9b::7f00:1", "64:ff9b:1::1", "2002:7f00:1::",
+    "2002:0a00:0001::1", "fd12:3456::1", "fe80::1", "fec0::1", "ff02::1", "2001:db8::1",
+    "100::1", "not-an-ip", "1::2::3",
+  ];
+  for (const ip of privateCases) assert(isPrivateAddress(ip), `${ip} is private or refused`);
+  const publicCases = ["2606:4700::1111", "::ffff:8.8.8.8", "::ffff:808:808", "64:ff9b::808:808", "2002:808:808::1", "2a00:1450::1", "8.8.8.8"];
+  for (const ip of publicCases) assert(!isPrivateAddress(ip), `${ip} is public`);
 
   if (failures) {
     console.error(`\n${failures} import check(s) failed.`);

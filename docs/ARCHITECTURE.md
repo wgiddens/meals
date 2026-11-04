@@ -117,7 +117,14 @@ same way (with `source` = `web` and the link in Source URL).
    timeout, body read capped at 2 MB, browser-like `User-Agent` and
    `Accept: text/html`. `IMPORT_ALLOW_PRIVATE_URLS=true` turns the address
    check off for local testing against a fixture server; never set it on a
-   deployment.
+   deployment. IPv6 addresses are compared by value, so IPv4-mapped, NAT64
+   and 6to4 forms of a private IPv4 address are refused too. DNS rebinding is
+   not defended: the hostname is resolved once for the check and again by
+   `fetch()`, so a short-TTL record could pass the check and then point at a
+   private address; the endpoint relies on the household passcode gate in
+   front of `/api/*` instead. Because `POST /api/import` makes outbound
+   requests on the caller's behalf and can spend Claude tokens, it must
+   always sit behind that gate.
 2. **schema.org Recipe from JSON-LD** (`jsonld.ts`). Walks every
    `application/ld+json` block, including `@graph` arrays and array `@type`s.
    Maps name, description, `recipeIngredient`, `recipeInstructions` (strings,

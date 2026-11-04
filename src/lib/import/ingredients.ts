@@ -29,8 +29,8 @@ const UNICODE_FRACTIONS: Record<string, number> = {
 
 const FRACTION_CHARS = Object.keys(UNICODE_FRACTIONS).join("");
 
-/** One number: "2", "1.5", "1/2", "1 1/2", "1½", "½". */
-const NUMBER = `(?:\\d+(?:[.,]\\d+)?(?:\\s*[${FRACTION_CHARS}]|\\s+\\d+/\\d+|/\\d+)?|[${FRACTION_CHARS}])`;
+/** One number: "2", "1.5", ".5", "1/2", "1 1/2", "1½", "½". */
+const NUMBER = `(?:\\d+(?:[.,]\\d+)?(?:\\s*[${FRACTION_CHARS}]|\\s+\\d+/\\d+|/\\d+)?|\\.\\d+|[${FRACTION_CHARS}])`;
 /** A number or a range: "1-2", "1 to 2", "1 – 2". */
 const QUANTITY_RE = new RegExp(`^(${NUMBER})(?:\\s*(?:-|–|—|to)\\s*(${NUMBER}))?(?=\\s|$|[a-zA-Z(])`, "u");
 
@@ -153,13 +153,23 @@ export function parseIngredientLine(raw: string): ParsedIngredientLine {
   }
 
   let unit: string | null = null;
-  // Try a two-word unit first ("fl oz"), then one word.
+  // Try a two-word unit first ("fl oz"), then one word. Abbreviations often
+  // carry a period ("Tbsp.", "lb.", "c."), which is dropped for the lookup
+  // but still consumed from the line.
   const words = s.split(" ");
-  const two = words.slice(0, 2).join(" ");
-  const one = words[0] ?? "";
-  const candidate = UNIT_WORDS.has(two.toLowerCase()) ? two : UNIT_WORDS.has(one) || UNIT_WORDS.has(one.toLowerCase()) ? one : null;
+  const stripDot = (w: string) => w.replace(/\.$/, "");
+  const twoRaw = words.slice(0, 2).join(" ");
+  const oneRaw = words[0] ?? "";
+  const two = stripDot(twoRaw);
+  const one = stripDot(oneRaw);
+  const known = (w: string) => UNIT_WORDS.has(w) || UNIT_WORDS.has(w.toLowerCase());
+  const [candidate, consumed] = known(two) && two.includes(" ")
+    ? [two, twoRaw]
+    : known(one)
+      ? [one, oneRaw]
+      : [null, ""];
   if (candidate && (quantity != null || !SIZE_WORDS.has(candidate.toLowerCase()))) {
-    const rest = s.slice(candidate.length).trim();
+    const rest = s.slice(consumed.length).trim();
     // "2 large eggs": keep "large" as a note, not a unit.
     if (SIZE_WORDS.has(candidate.toLowerCase())) {
       notes.push(candidate.toLowerCase());

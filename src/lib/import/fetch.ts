@@ -51,19 +51,63 @@ function isPrivateIPv4(ip: string): boolean {
   );
 }
 
+/**
+ * Expand any IPv6 text form ("::1", "::ffff:7f00:1", "::ffff:127.0.0.1",
+ * "0:0:0:0:0:ffff:a00:1") to its 16 bytes, so ranges are tested by value
+ * rather than by spelling. Returns null for anything malformed.
+ */
+export function ipv6ToBytes(ip: string): Uint8Array | null {
+  let s = ip.toLowerCase().split("%")[0];
+  // A trailing dotted IPv4 part becomes two hex groups.
+  const dotted = s.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (dotted) {
+    const p = dotted[2].split(".").map(Number);
+    if (p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+    s = `${dotted[1]}${((p[0] << 8) | p[1]).toString(16)}:${((p[2] << 8) | p[3]).toString(16)}`;
+  }
+  const halves = s.split("::");
+  if (halves.length > 2) return null;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  const groups = [...head, ...Array<string>(halves.length === 2 ? missing : 0).fill("0"), ...tail];
+  const bytes = new Uint8Array(16);
+  for (let i = 0; i < 8; i++) {
+    if (!/^[0-9a-f]{1,4}$/.test(groups[i])) return null;
+    const v = parseInt(groups[i], 16);
+    bytes[i * 2] = v >> 8;
+    bytes[i * 2 + 1] = v & 0xff;
+  }
+  return bytes;
+}
+
 function isPrivateIPv6(ip: string): boolean {
-  const lower = ip.toLowerCase().split("%")[0];
-  if (lower === "::" || lower === "::1") return true;
-  // IPv4-mapped (::ffff:1.2.3.4) and IPv4-compatible addresses.
-  const mapped = lower.match(/^::(?:ffff:)?(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIPv4(mapped[1]);
-  const first = parseInt(lower.split(":")[0] || "0", 16);
+  const b = ipv6ToBytes(ip);
+  if (!b) return true;
+  const zeroUntil = (n: number) => b.subarray(0, n).every((x) => x === 0);
+  const low4 = () => `${b[12]}.${b[13]}.${b[14]}.${b[15]}`;
+  // :: (unspecified) and ::1 (loopback).
+  if (zeroUntil(15) && b[15] <= 1) return true;
+  // ::ffff:0:0/96 IPv4-mapped: judge the embedded IPv4 address.
+  if (zeroUntil(10) && b[10] === 0xff && b[11] === 0xff) return isPrivateIPv4(low4());
+  // ::/96 deprecated IPv4-compatible form.
+  if (zeroUntil(12)) return isPrivateIPv4(low4());
+  // 64:ff9b::/96 NAT64: judge the embedded IPv4 address.
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b && b.subarray(4, 12).every((x) => x === 0)) {
+    return isPrivateIPv4(low4());
+  }
+  // 64:ff9b:1::/48 local-use NAT64 could map anywhere.
+  if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) return true;
+  // 2002::/16 6to4: the next four bytes are an IPv4 address.
+  if (b[0] === 0x20 && b[1] === 0x02) return isPrivateIPv4(`${b[2]}.${b[3]}.${b[4]}.${b[5]}`);
   return (
-    (first & 0xfe00) === 0xfc00 || // fc00::/7 unique local
-    (first & 0xffc0) === 0xfe80 || // fe80::/10 link-local
-    (first & 0xff00) === 0xff00 || // multicast
-    lower.startsWith("2001:db8") || // documentation
-    lower.startsWith("64:ff9b") // NAT64 (could map to anything)
+    (b[0] & 0xfe) === 0xfc || // fc00::/7 unique local
+    (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) || // fe80::/10 link-local
+    (b[0] === 0xfe && (b[1] & 0xc0) === 0xc0) || // fec0::/10 deprecated site-local
+    b[0] === 0xff || // multicast
+    (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) || // 2001:db8::/32 documentation
+    (b[0] === 0x01 && b[1] === 0x00 && b.subarray(2, 8).every((x) => x === 0)) // 100::/64 discard
   );
 }
 
@@ -105,7 +149,8 @@ export function validateImportUrl(raw: string): URL {
   }
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (!privateAllowed()) {
-    if (isLocalHostname(host)) {
+    // IP literals have no dot rule to apply: the address check below decides.
+    if (!isIP(host) && isLocalHostname(host)) {
       throw new ImportUrlError("That address points at a local or private network, which the importer won't fetch.");
     }
     if (isIP(host) && isPrivateAddress(host)) {

@@ -110,8 +110,15 @@ export function instructionsToText(value: Json | undefined): string {
   const pushStep = (text: string) => {
     const t = text.trim();
     if (!t) return;
-    // Lines that are already numbered ("1. Heat oven") keep their own number.
-    lines.push(/^\d+[.)]\s/.test(t) ? t : `${++n}. ${t}`);
+    // Lines that are already numbered ("3. Heat oven") keep their own number,
+    // and later unnumbered steps continue from it.
+    const own = t.match(/^(\d+)[.)]\s/);
+    if (own) {
+      n = Math.max(n, Number(own[1]));
+      lines.push(t);
+    } else {
+      lines.push(`${++n}. ${t}`);
+    }
   };
   const walk = (v: Json | undefined, depth: number) => {
     if (v === undefined || v === null || depth > 5) return;
