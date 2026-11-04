@@ -106,7 +106,23 @@ shown above the form.
 - `npm run smoke` – creates a temp PGlite DB and walks recipes → plan → list
 - `npm run build` – also enforces the Cache Components rules per route
 
+GitHub Actions runs the same four checks, each as its own step, on every pull
+request and on every push to `main` (`.github/workflows/ci.yml`). The workflow
+sets no `DATABASE_URL` and no `ANTHROPIC_API_KEY`, so the build's migrate step
+is a no-op and everything runs against the embedded database. A new push to a
+PR cancels the run it supersedes.
+
 ## Deployment
+
+### Branches
+
+- `main` is the production branch. Vercel deploys every push to it.
+- Work happens on branches (`feature/...`, `chore/...`), never directly on
+  `main`.
+- Changes reach `main` through a pull request, and the pull request must have
+  a green CI check before it is merged.
+
+### Hosting
 
 1. Create a Supabase project (or any Postgres) and set `DATABASE_URL`.
 2. `npm run db:migrate` once per schema change (reads `drizzle/`).
