@@ -25,8 +25,8 @@ to have open.
    planner and the assistant both lean toward things we've enjoyed.
 3. **A rough plan is good enough.** The plan exists mostly so the grocery list
    writes itself. "Leftovers" or "pizza night" are valid entries.
-4. **Low friction to add recipes.** Type one in, or take a picture of a plate
-   and let the app draft the ingredients and steps.
+4. **Low friction to add recipes.** Type one in, paste a link, or take a
+   picture of a plate and let the app draft the ingredients and steps.
 
 ## Roadmap
 
@@ -41,6 +41,10 @@ to have open.
   hand-added items survive a rebuild.
 - Photo → recipe draft: upload a picture of a plate, get a title, ingredient
   list, timing and steps to review before saving.
+- Import from a URL: paste a recipe link, get the same draft to review before
+  saving. Reads the recipe data most sites publish (no API key needed); for
+  pages without it, Claude drafts from the page text. The saved recipe keeps
+  the link as its source.
 - Assistant access over MCP: `whats_for_supper`, `get_meal_plan`, `plan_meal`,
   `list_recipes`, `get_recipe`, `add_recipe`, `get_grocery_list`,
   `add_grocery_item`. Works with Claude (desktop, mobile, Code), ChatGPT
@@ -53,7 +57,6 @@ to have open.
 - **Accounts and household sharing.** Sign in (Supabase Auth), one household,
   several members. Needed before the app is reachable from the open internet
   with family data in it.
-- **Import from a URL.** Paste a recipe link; extract ingredients and steps.
 - **"Try something new."** Ask for suggestions given what we have, what we've
   liked, the time budget, and what's already on this week's plan. Save the
   result as a recipe with one tap. This is mostly prompt work on top of the
