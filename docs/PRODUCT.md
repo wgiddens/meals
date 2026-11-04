@@ -41,10 +41,14 @@ to have open.
   hand-added items survive a rebuild.
 - Photo → recipe draft: upload a picture of a plate, get a title, ingredient
   list, timing and steps to review before saving.
-- Assistant access over MCP: `whats_for_supper`, `get_meal_plan`, `plan_meal`,
-  `list_recipes`, `get_recipe`, `add_recipe`, `get_grocery_list`,
-  `add_grocery_item`. Works with Claude (desktop, mobile, Code), ChatGPT
-  (connectors / developer mode) and Gemini CLI.
+- Assistant access over MCP, read and write: `whats_for_supper`,
+  `get_meal_plan`, `plan_meal`, `mark_cooked`, `list_recipes`, `get_recipe`,
+  `add_recipe`, `rate_recipe`, `update_recipe`, `get_grocery_list`,
+  `add_grocery_item`, `check_grocery_item`, `remove_grocery_item`. Enough to
+  run the plan from a chat: "what's for supper?", "we had it, it was a 4",
+  "cross milk off the list". No delete-recipe tool on purpose. Works with
+  Claude (desktop, mobile, Code), ChatGPT (connectors / developer mode) and
+  Gemini CLI.
 - Runs locally with zero setup (embedded Postgres), deploys to Vercel +
   Supabase with two environment variables.
 
