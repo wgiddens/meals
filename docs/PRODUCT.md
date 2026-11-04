@@ -50,21 +50,57 @@ to have open.
 
 ### Next
 
+Roughly in priority order. Items marked *in review* have an open pull request.
+
 - **Accounts and household sharing.** Sign in (Supabase Auth), one household,
   several members. Needed before the app is reachable from the open internet
-  with family data in it.
+  with family data in it. Interim step, already in place: a single shared
+  household passcode (`HOUSEHOLD_PASSCODE`) gates the web app; see
+  ARCHITECTURE.md.
+- **Family members and preferences.** Each person in the household is a
+  record: who's cooking tonight, who rated what, who won't eat mushrooms.
+  Prioritized early because it touches most tables (ratings, notes, plan
+  entries, pantry) and is cheaper to design in than to retrofit. If it works
+  for one family, inviting friends into their own households is a small step.
 - **Import from a URL.** Paste a recipe link; extract ingredients and steps.
-- **"Try something new."** Ask for suggestions given what we have, what we've
-  liked, the time budget, and what's already on this week's plan. Save the
-  result as a recipe with one tap. This is mostly prompt work on top of the
-  existing MCP tools plus a small "suggest" UI.
-- **Cook from what's in the house.** Enter the groceries you came home with
-  and get recipe ideas (new or from the book) that use them.
-- **Smarter list merging.** Convert between units where it's safe (3 tsp →
-  1 tbsp), and a per-household pantry list so staples like salt aren't added
-  every week.
-- **History.** "When did we last have this?" and "what did we eat last month?",
-  driven by the cooked flag.
+  *In review.*
+- **Assistant write tools.** Mark cooked, rate, edit a recipe, check off and
+  remove list items over MCP, so the assistant can do everything the pages
+  can. *In review.*
+- **Close the cooking loop.** Today data only flows recipe → plan → list and
+  nothing comes back. The `cooked` flag exists but nothing reads it.
+  - Rate each cook when marking it cooked ("was it good, would we make it
+    again?"); the recipe's rating becomes an average rather than a field
+    someone typed once.
+  - Per-cook notes ("used less salt", "kids skipped the beans"). The recipe
+    notes field is for the recipe; this is for what happened that night.
+  - "Last cooked" on every recipe, and sort the plan picker by it. The
+    alphabetical dropdown stops working around 40 recipes.
+  - History: "when did we last have this?", "what did we eat last month?",
+    repeats, and what we haven't had in a while.
+- **Let the assistant plan the week.** The MCP tools are primitives; the
+  assistant can set Thursday but can't be asked to draft the week.
+  - A `suggest_week` tool (or MCP prompt) that takes constraints (time budget
+    per weekday, no repeats within N weeks, one new thing, use up the chicken)
+    and returns a draft for approval. Mostly prompt work on top of history.
+  - **"Try something new."** Suggestions given what we've liked, the time
+    budget and what's already on the plan. Save the result as a recipe with
+    one tap.
+  - **Cook from what's in the house.** Enter the groceries you came home with
+    (or what's in the freezer) and get ideas, new or from the book.
+  - A small "suggest" UI in the web app so the family gets this without
+    opening a chat.
+- **Grocery list.**
+  - "Already have it" at build time: show the aggregated list before saving
+    and tick off what's in the house.
+  - Hand the list to the store: per-line "search at Walmart" links, or a
+    plain-text export into whatever app the store uses. The cheap step toward
+    the pickup order under "Later".
+  - Smarter merging: convert between units where it's safe (3 tsp → 1 tbsp),
+    and a per-household pantry list so staples like salt aren't added every
+    week.
+- **Cook mode.** The recipe page while cooking: big steps, screen stays awake,
+  tap-to-start timers from "simmer 20 minutes".
 - **Scaling.** Adjust servings and scale ingredient quantities.
 
 ### Later
@@ -77,11 +113,18 @@ to have open.
 - Multiple meals per day (lunches, breakfasts) if we ever want them. The
   schema already has a `meal` column, so this is UI work.
 - Push a reminder: "tonight's supper takes 90 minutes, start by 5".
-- Shared shopping in real time (two phones in the store).
+- Shared shopping in real time (two phones in the store). Check-off is a
+  full server round trip today with no live update.
+- Copy last week, and recurring slots ("Taco Tuesday", "pizza Friday").
+- Leftovers awareness: when servings exceed the family, suggest "leftovers"
+  for the next night.
+- Add to home screen (PWA manifest). The pages are mobile-first already.
+- Photos of the finished dish on recipes, once Supabase Storage is in play.
 
 ## Non-goals (for now)
 
 - Nutrition tracking, calorie counts, diets.
-- A public recipe community. This is for one household.
+- A public recipe community. Households and the friends they invite, not the
+  public.
 - Replacing the assistant's own intelligence. The app stores facts and exposes
   tools; the assistant does the suggesting and conversation.
