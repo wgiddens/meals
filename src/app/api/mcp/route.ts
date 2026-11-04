@@ -5,23 +5,42 @@ import { addDays, isIsoDate, todayIso, weekStart } from "@/lib/dates";
 import {
   addManualItem,
   buildListFromPlan,
+  findItemsByName,
+  formatItem,
   getCurrentList,
   listToJson,
+  removeItem,
+  setItemChecked,
+  uncheckedCount,
+  type GroceryListWithItems,
 } from "@/lib/grocery";
-import { describeMeal, getPlan, getSupper, planToJson, setMeal } from "@/lib/plan";
+import {
+  describeMeal,
+  getPlan,
+  getSupper,
+  markCooked,
+  planToJson,
+  setMeal,
+} from "@/lib/plan";
 import {
   createRecipe,
   findRecipeByTitle,
+  findRecipesByTitle,
   getRecipe,
   listRecipes,
+  patchRecipe,
+  rateRecipe,
   summarizeRecipe,
+  type RecipeWithIngredients,
 } from "@/lib/recipes";
 import { formatIngredient } from "@/lib/format";
+import type { GroceryItem } from "@/db/schema";
 
 /**
  * The assistant-facing API. Claude, ChatGPT, Gemini and anything else that
  * speaks MCP (Model Context Protocol) connects here and can answer "what's
- * for supper tonight?", look up recipes, plan meals and read the grocery list.
+ * for supper tonight?", look up recipes, plan meals, mark them cooked, rate
+ * and edit recipes, and read, check off and trim the grocery list.
  *
  * Mounted at /api/mcp (Streamable HTTP). See README for client setup.
  */
@@ -29,7 +48,9 @@ import { formatIngredient } from "@/lib/format";
 const dateArg = z
   .string()
   .optional()
-  .describe("Calendar date as YYYY-MM-DD in the household timezone. Defaults to today.");
+  .describe(
+    "Calendar date as YYYY-MM-DD in the household timezone, or 'today', 'tonight', 'tomorrow', 'yesterday'. Defaults to today.",
+  );
 
 function resolveDate(input: string | undefined): string {
   if (!input) return todayIso();
@@ -49,6 +70,90 @@ function text(value: unknown) {
 function errorResult(err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
   return { isError: true, content: [{ type: "text" as const, text: message }] };
+}
+
+/** The full recipe shape returned by get_recipe and update_recipe. */
+function recipeToJson(recipe: RecipeWithIngredients) {
+  return {
+    ...summarizeRecipe(recipe),
+    source_url: recipe.sourceUrl,
+    ingredients: recipe.ingredients.map((i) => ({
+      text: formatIngredient(i),
+      name: i.name,
+      quantity: i.quantity == null ? null : Number(i.quantity),
+      unit: i.unit,
+      note: i.note,
+      category: i.category,
+    })),
+    instructions: recipe.instructions,
+    notes: recipe.notes,
+  };
+}
+
+/**
+ * Find exactly one recipe from an id or a title. A title that matches several
+ * recipes is an error that lists the candidates, so the assistant can ask
+ * which one was meant instead of editing the wrong recipe.
+ */
+async function resolveRecipe(recipe_id?: string, recipe_title?: string) {
+  if (recipe_id) {
+    const r = await getRecipe(recipe_id);
+    if (!r) throw new Error(`No recipe with id ${recipe_id}`);
+    return r;
+  }
+  if (recipe_title) {
+    const matches = await findRecipesByTitle(recipe_title);
+    if (matches.length === 1) return matches[0];
+    if (matches.length === 0) {
+      throw new Error(`No recipe matching "${recipe_title}". Use list_recipes to search.`);
+    }
+    const options = matches.map((m) => `"${m.title}" (recipe_id ${m.id})`).join(", ");
+    throw new Error(
+      `"${recipe_title}" matches ${matches.length} recipes: ${options}. Call again with recipe_id or a more specific recipe_title.`,
+    );
+  }
+  throw new Error("Provide recipe_id or recipe_title.");
+}
+
+/**
+ * Find exactly one item on the current grocery list from an id or a name.
+ * Same ambiguity rule as resolveRecipe: several name matches is an error that
+ * lists them.
+ */
+async function resolveGroceryItem(
+  item_id?: string,
+  name?: string,
+): Promise<{ list: GroceryListWithItems; item: GroceryItem }> {
+  const list = await getCurrentList();
+  if (!list) throw new Error("There is no grocery list yet. Call get_grocery_list first.");
+  if (item_id) {
+    const item = list.items.find((i) => i.id === item_id);
+    if (!item) throw new Error(`No item with id ${item_id} on the current grocery list.`);
+    return { list, item };
+  }
+  if (name) {
+    const matches = findItemsByName(list.items, name);
+    if (matches.length === 1) return { list, item: matches[0] };
+    if (matches.length === 0) {
+      throw new Error(`Nothing on the grocery list matches "${name}". Use get_grocery_list to see it.`);
+    }
+    const options = matches.map((m) => `"${formatItem(m)}" (item_id ${m.id})`).join(", ");
+    throw new Error(
+      `"${name}" matches ${matches.length} items: ${options}. Call again with item_id or a more specific name.`,
+    );
+  }
+  throw new Error("Provide item_id or name.");
+}
+
+function groceryItemToJson(item: GroceryItem) {
+  return {
+    id: item.id,
+    text: formatItem(item),
+    name: item.name,
+    category: item.category,
+    checked: item.checked,
+    for_recipes: item.forRecipes,
+  };
 }
 
 const handler = createMcpHandler(
@@ -149,6 +254,48 @@ const handler = createMcpHandler(
     );
 
     server.registerTool(
+      "mark_cooked",
+      {
+        title: "Mark a meal cooked",
+        description:
+          "Record that the planned supper for a date was actually cooked ('we had it'). Use cooked=false to undo. Errors if nothing is planned for that date. To also rate the recipe, follow up with rate_recipe.",
+        inputSchema: z.object({
+          date: dateArg,
+          cooked: z
+            .boolean()
+            .optional()
+            .describe("true (default) marks it cooked; false clears the flag."),
+        }),
+      },
+      async ({ date, cooked }) => {
+        try {
+          const iso = resolveDate(date);
+          const flag = cooked ?? true;
+          const meal = await markCooked(iso, flag);
+          if (!meal) {
+            throw new Error(
+              `Nothing is planned for ${iso}, so there is nothing to mark cooked. Use plan_meal first.`,
+            );
+          }
+          const what = meal.recipe?.title ?? meal.note ?? "the planned supper";
+          return text({
+            ok: true,
+            date: iso,
+            cooked: meal.cooked,
+            recipe_id: meal.recipeId,
+            recipe_title: meal.recipe?.title ?? null,
+            note: meal.note,
+            summary: flag
+              ? `Marked ${what} on ${iso} as cooked.`
+              : `Cleared the cooked flag for ${what} on ${iso}.`,
+          });
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.registerTool(
       "list_recipes",
       {
         title: "List recipes",
@@ -198,20 +345,7 @@ const handler = createMcpHandler(
               ? await findRecipeByTitle(title)
               : null;
           if (!recipe) return errorResult(new Error("Recipe not found. Provide recipe_id or title."));
-          return text({
-            ...summarizeRecipe(recipe),
-            source_url: recipe.sourceUrl,
-            ingredients: recipe.ingredients.map((i) => ({
-              text: formatIngredient(i),
-              name: i.name,
-              quantity: i.quantity == null ? null : Number(i.quantity),
-              unit: i.unit,
-              note: i.note,
-              category: i.category,
-            })),
-            instructions: recipe.instructions,
-            notes: recipe.notes,
-          });
+          return text(recipeToJson(recipe));
         } catch (err) {
           return errorResult(err);
         }
@@ -263,6 +397,115 @@ const handler = createMcpHandler(
             notes: args.notes,
           });
           return text({ ok: true, recipe: summarizeRecipe(recipe) });
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "rate_recipe",
+      {
+        title: "Rate a recipe",
+        description:
+          "Record the family's rating (1-5) for a recipe after eating it ('it was a 4'). Optionally append a note to the recipe's notes, e.g. 'kids wanted more cheese'. Replaces any previous rating.",
+        inputSchema: z.object({
+          recipe_id: z.string().optional().describe("Exact recipe id, if known."),
+          recipe_title: z
+            .string()
+            .optional()
+            .describe(
+              "Recipe title to match instead of recipe_id. Case-insensitive; a partial title works if it matches only one recipe.",
+            ),
+          rating: z.number().int().min(1).max(5).describe("1 (nobody ate it) to 5 (everyone wants it again)."),
+          note: z
+            .string()
+            .optional()
+            .describe("Optional remark to append to the recipe's notes as a new paragraph."),
+        }),
+      },
+      async ({ recipe_id, recipe_title, rating, note }) => {
+        try {
+          const found = await resolveRecipe(recipe_id, recipe_title);
+          const recipe = await rateRecipe(found.id, rating, note);
+          return text({
+            ok: true,
+            recipe: summarizeRecipe(recipe),
+            notes: recipe.notes,
+            summary: `Rated ${recipe.title} ${rating}/5${note ? " and added a note" : ""}.`,
+          });
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "update_recipe",
+      {
+        title: "Update recipe",
+        description:
+          "Edit an existing recipe. Only the fields you pass are changed; everything else is kept. Pass `ingredients` to replace the whole ingredient list (include every ingredient, not just the changed ones). Returns the full updated recipe. There is no delete; to remove a recipe use the website.",
+        inputSchema: z.object({
+          recipe_id: z.string().optional().describe("Exact recipe id, if known."),
+          recipe_title: z
+            .string()
+            .optional()
+            .describe(
+              "Current title to match instead of recipe_id. Case-insensitive; a partial title works if it matches only one recipe.",
+            ),
+          title: z.string().optional().describe("New title."),
+          description: z.string().nullable().optional().describe("One or two sentences. null clears it."),
+          source_url: z.string().nullable().optional().describe("Where the recipe came from. null clears it."),
+          servings: z.number().int().positive().nullable().optional(),
+          prep_minutes: z.number().int().nonnegative().nullable().optional(),
+          cook_minutes: z.number().int().nonnegative().nullable().optional(),
+          complexity: z.enum(complexities).optional().describe("easy, medium or hard (involved)."),
+          rating: z.number().int().min(1).max(5).nullable().optional().describe("Family rating 1-5. null clears it."),
+          tags: z.array(z.string()).optional().describe("Replaces the tag list. Lowercased and de-duplicated."),
+          instructions: z.string().nullable().optional().describe("Full replacement of the steps, one per line."),
+          notes: z.string().nullable().optional().describe("Full replacement of the notes. To append a remark, use rate_recipe."),
+          ingredients: z
+            .array(
+              z.object({
+                name: z.string(),
+                quantity: z.number().nonnegative().nullable().optional(),
+                unit: z.string().nullable().optional(),
+                note: z.string().nullable().optional().describe("e.g. 'diced', 'optional'"),
+                category: z.enum(ingredientCategories).optional().describe("Store aisle. Default other."),
+              }),
+            )
+            .optional()
+            .describe("Complete replacement ingredient list, same shape as add_recipe. Omit to leave ingredients unchanged."),
+        }),
+      },
+      async (args) => {
+        try {
+          const found = await resolveRecipe(args.recipe_id, args.recipe_title);
+          const changed = Object.keys(args).filter(
+            (k) => k !== "recipe_id" && k !== "recipe_title" && args[k as keyof typeof args] !== undefined,
+          );
+          if (!changed.length) throw new Error("Nothing to update: pass at least one field to change.");
+          const recipe = await patchRecipe(found.id, {
+            title: args.title,
+            description: args.description,
+            sourceUrl: args.source_url,
+            servings: args.servings,
+            prepMinutes: args.prep_minutes,
+            cookMinutes: args.cook_minutes,
+            complexity: args.complexity,
+            rating: args.rating,
+            tags: args.tags,
+            instructions: args.instructions,
+            notes: args.notes,
+            ingredients: args.ingredients,
+          });
+          return text({
+            ok: true,
+            changed,
+            summary: `Updated ${recipe.title}: ${changed.join(", ")}.`,
+            recipe: recipeToJson(recipe),
+          });
         } catch (err) {
           return errorResult(err);
         }
@@ -324,11 +567,77 @@ const handler = createMcpHandler(
         }
       },
     );
+
+    server.registerTool(
+      "check_grocery_item",
+      {
+        title: "Check off a grocery item",
+        description:
+          "Tick an item off the current shopping list ('got the milk'), or untick it with checked=false. Identify the item by item_id (from get_grocery_list) or by name. Returns how many items are still unchecked.",
+        inputSchema: z.object({
+          item_id: z.string().optional().describe("Exact item id from get_grocery_list, if known."),
+          name: z
+            .string()
+            .optional()
+            .describe("Item name to match instead of item_id, e.g. 'milk'. Must match exactly one item on the list."),
+          checked: z.boolean().optional().describe("true (default) checks it off; false puts it back."),
+        }),
+      },
+      async ({ item_id, name, checked }) => {
+        try {
+          const flag = checked ?? true;
+          const { item } = await resolveGroceryItem(item_id, name);
+          const updated = (await setItemChecked(item.id, flag)) ?? { ...item, checked: flag };
+          const list = (await getCurrentList())!;
+          const remaining = uncheckedCount(list.items);
+          return text({
+            ok: true,
+            item: groceryItemToJson(updated),
+            remaining_count: remaining,
+            summary: `${flag ? "Checked off" : "Unchecked"} ${formatItem(updated)}. ${remaining} item${remaining === 1 ? "" : "s"} left.`,
+          });
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
+
+    server.registerTool(
+      "remove_grocery_item",
+      {
+        title: "Remove a grocery item",
+        description:
+          "Take an item off the current shopping list entirely ('we don't need eggs'). Identify it by item_id (from get_grocery_list) or by name. To mark something as bought instead, use check_grocery_item. Note that items that came from a planned recipe will reappear if the list is rebuilt from the plan.",
+        inputSchema: z.object({
+          item_id: z.string().optional().describe("Exact item id from get_grocery_list, if known."),
+          name: z
+            .string()
+            .optional()
+            .describe("Item name to match instead of item_id, e.g. 'eggs'. Must match exactly one item on the list."),
+        }),
+      },
+      async ({ item_id, name }) => {
+        try {
+          const { item } = await resolveGroceryItem(item_id, name);
+          const removed = (await removeItem(item.id)) ?? item;
+          const list = (await getCurrentList())!;
+          const remaining = uncheckedCount(list.items);
+          return text({
+            ok: true,
+            removed: groceryItemToJson(removed),
+            remaining_count: remaining,
+            summary: `Removed ${formatItem(removed)} from the list. ${remaining} item${remaining === 1 ? "" : "s"} left.`,
+          });
+        } catch (err) {
+          return errorResult(err);
+        }
+      },
+    );
   },
   {
-    serverInfo: { name: "family-meals", version: "0.1.0" },
+    serverInfo: { name: "family-meals", version: "0.2.0" },
     instructions:
-      "Tools for a family's recipe book and weekly supper plan. Dates are YYYY-MM-DD in the household's local timezone; 'tonight' means today's supper. When suggesting what to cook, favor recipes with short total time, low complexity and a high family rating.",
+      "Tools for a family's recipe book, weekly supper plan and grocery list. Dates are YYYY-MM-DD in the household's local timezone; 'tonight' means today's supper. When suggesting what to cook, favor recipes with short total time, low complexity and a high family rating. After the family eats, mark_cooked records it and rate_recipe stores how it went. Grocery items can be checked off or removed by name.",
   },
 );
 
