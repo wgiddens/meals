@@ -52,7 +52,9 @@ to have open.
 
 - **Accounts and household sharing.** Sign in (Supabase Auth), one household,
   several members. Needed before the app is reachable from the open internet
-  with family data in it.
+  with family data in it. Interim step, already in place: a single shared
+  household passcode (`HOUSEHOLD_PASSCODE`) gates the web app; see
+  ARCHITECTURE.md.
 - **Import from a URL.** Paste a recipe link; extract ingredients and steps.
 - **"Try something new."** Ask for suggestions given what we have, what we've
   liked, the time budget, and what's already on this week's plan. Save the

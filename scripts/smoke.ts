@@ -22,6 +22,23 @@ async function main() {
     console.log(`ok - ${msg}`);
   };
 
+  // The /login return path must never point off-site.
+  const { safeReturnPath } = await import("@/lib/household");
+  for (const bad of [
+    "//evil.example",
+    "/\\evil.example",
+    "/%5Cevil.example",
+    "https://evil.example",
+    "/plan\u0000",
+    "/login?next=%2Fplan",
+    "",
+    undefined,
+  ]) {
+    assert(safeReturnPath(bad) === "/", `return path ${JSON.stringify(bad)} falls back to /`);
+  }
+  assert(safeReturnPath("/plan?x=1") === "/plan?x=1", "return path /plan?x=1 is allowed");
+  assert(safeReturnPath("/recipes/abc") === "/recipes/abc", "return path /recipes/abc is allowed");
+
   const tacos = await createRecipe({
     title: "Smoke Tacos",
     prepMinutes: 10,
