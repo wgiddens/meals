@@ -9,7 +9,7 @@
 | Database | Postgres via Drizzle ORM | Relational data (recipes ↔ ingredients ↔ plan ↔ list). Drizzle gives typed queries and SQL migrations. |
 | Local DB | PGlite (embedded Postgres, WASM) | `npm run dev` works with no services installed. Same SQL dialect as production, so no "works on SQLite but not Postgres" surprises. Data lives in `./data/pglite`. |
 | Hosted DB | Supabase Postgres (any Postgres works) | Set `DATABASE_URL`. Supabase also gives us Auth and Storage for the "Next" roadmap items. |
-| AI | Anthropic SDK (`@anthropic-ai/sdk`), Claude Opus 5.5 | Vision + structured output for photo → recipe. Called server-side only. |
+| AI | Anthropic SDK (`@anthropic-ai/sdk`), Claude Opus 5.5 | Vision + structured output for photo → recipe, and text extraction for URL imports without recipe data. Called server-side only. |
 | Assistant integration | MCP over Streamable HTTP (`mcp-handler` + `@modelcontextprotocol/server`) | One endpoint that Claude, ChatGPT and Gemini can all connect to. |
 
 ## Layout
@@ -27,7 +27,11 @@ src/
     plan.ts          weekly supper plan
     grocery.ts       aggregate plan ingredients → shopping list
     today.ts         request-time "today" for pages
-    ai/plate.ts      Claude call: photo → structured recipe draft
+    ai/draft.ts      the shared recipe-draft schema and the Claude call that fills it
+    ai/plate.ts      photo → draft (prompt + image input)
+    ai/web.ts        page text → draft (fallback for URL import)
+    import/          URL import: fetch guard, JSON-LD mapping, ingredient-line
+                     parser + aisle guesser, HTML → text
   app/
     page.tsx         Tonight + this week
     recipes/         list, detail, new, edit
@@ -36,9 +40,11 @@ src/
     actions.ts       Server Actions (all writes from the UI)
     api/mcp/route.ts MCP endpoint for assistants
     api/plate/route.ts  photo upload → recipe draft JSON
+    api/import/route.ts URL → recipe draft JSON
   components/        RecipeForm (client), RecipeCard
 drizzle/             generated SQL migrations (committed)
 scripts/smoke.ts     end-to-end check of the data layer against a temp DB
+scripts/check-import.ts  importer checks against scripts/fixtures/import/*.html
 docs/                this file and PRODUCT.md
 ```
 
@@ -99,12 +105,64 @@ prompt and a zod output schema (`client.messages.parse` +
 the cook reviews it before saving. The model's own list of assumptions is
 shown above the form.
 
+## Link → recipe
+
+`POST /api/import` takes `{ url }` and returns the same draft shape as the
+photo endpoint plus `method` and `sourceUrl`, so `RecipeForm` pre-fills the
+same way (with `source` = `web` and the link in Source URL).
+
+1. **Fetch** (`src/lib/import/fetch.ts`). http(s) only; localhost, bare
+   hostnames, and private, link-local or loopback addresses are refused, both
+   as typed and after DNS resolution and on every redirect hop. 10 second
+   timeout, body read capped at 2 MB, browser-like `User-Agent` and
+   `Accept: text/html`. `IMPORT_ALLOW_PRIVATE_URLS=true` turns the address
+   check off for local testing against a fixture server; never set it on a
+   deployment. IPv6 addresses are compared by value, so IPv4-mapped, NAT64
+   and 6to4 forms of a private IPv4 address are refused too. DNS rebinding is
+   not defended: the hostname is resolved once for the check and again by
+   `fetch()`, so a short-TTL record could pass the check and then point at a
+   private address; the endpoint relies on the household passcode gate in
+   front of `/api/*` instead. Because `POST /api/import` makes outbound
+   requests on the caller's behalf and can spend Claude tokens, it must
+   always sit behind that gate.
+2. **schema.org Recipe from JSON-LD** (`jsonld.ts`). Walks every
+   `application/ld+json` block, including `@graph` arrays and array `@type`s.
+   Maps name, description, `recipeIngredient`, `recipeInstructions` (strings,
+   `HowToStep`, `HowToSection` groups, which keep a heading line), ISO 8601
+   durations to minutes (deriving cook time from `totalTime` when needed),
+   `recipeYield` to servings, and keywords/category/cuisine to tags. Effort is
+   guessed from total time and step count. `image` is ignored for now (no
+   image storage). Needs no API key, and is what nearly every recipe site and
+   WordPress recipe plugin publishes.
+3. **Ingredient lines** (`ingredients.ts`). Leading quantity (decimals, ASCII
+   and unicode fractions, mixed numbers, ranges like "1-2" keep the low value
+   and note the range), a unit normalized through `format.ts`, the name, and a
+   note from parentheses or after the first comma. A keyword map assigns the
+   grocery aisle; unknown items are `other`. Anything unreadable becomes a
+   name-only line rather than being dropped.
+4. **Claude fallback** (`src/lib/ai/web.ts`) when no Recipe node exists and
+   `ANTHROPIC_API_KEY` is set: the page is stripped to readable text
+   (`html.ts`: no script/style/nav/header/footer, `<main>`/`<article>` when
+   present, capped at 40k characters) and sent with a prompt that says to
+   extract only what is on the page and never invent quantities. Same model,
+   schema and `messages.parse` call as the photo path, via `ai/draft.ts`; the
+   model assigns aisles itself.
+5. Otherwise the endpoint answers 422 with "no recipe found on that page".
+
+`npm run check:import` exercises steps 2 to 4's parsing against the fixtures
+in `scripts/fixtures/import` and the URL guard, with no network.
+
 ## Running checks
 
 - `npm run typecheck` – TypeScript
 - `npm run lint` – ESLint
-- `npm run smoke` – creates a temp PGlite DB and walks recipes → plan → list
+- `npm run check:import` – URL importer against fixture pages, no network
+- `npm run smoke` – runs `check:import`, then creates a temp PGlite DB and
+  walks recipes → plan → list
 - `npm run build` – also enforces the Cache Components rules per route
+- `node scripts/e2e-import.mjs` – optional browser walk-through of "Start from
+  a link" against a running production server (needs Playwright on the module
+  path; see the header comment for the env vars)
 
 GitHub Actions runs the same four checks, each as its own step, on every pull
 request and on every push to `main` (`.github/workflows/ci.yml`). The workflow
