@@ -42,6 +42,7 @@ Copy `.env.example` to `.env.local` and fill in what you need:
 | `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page. |
 | `MCP_API_KEY` | Bearer token assistants must send to `/api/mcp`. Unset = open, fine on localhost only. |
 | `HOUSEHOLD_TIMEZONE` | What "tonight" means. Default `America/New_York`. |
+| `HOUSEHOLD_PASSCODE` | Shared passcode for the web app's `/login` page. Unset = open, fine on localhost only. Set it on any deployment. |
 | `DATABASE_URL` | Use a real Postgres (e.g. Supabase) instead of the embedded one. |
 
 ## Connect an AI assistant
@@ -113,7 +114,8 @@ under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
 ## Deploying
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deployment). Short version:
-Vercel + a Supabase Postgres, four environment variables, run
-`npm run db:migrate` once. There are no user accounts yet, so keep the
-deployment private until that lands (it's the first item under "Next" in the
-roadmap).
+Vercel + a Supabase Postgres, five environment variables, run
+`npm run db:migrate` once. There are no user accounts yet; `HOUSEHOLD_PASSCODE`
+is what keeps the deployment to the family. Each person types it once on
+`/login` and their phone stays signed in for a year. Assistants are unaffected:
+`/api/mcp` keeps using its own `MCP_API_KEY` bearer token.
