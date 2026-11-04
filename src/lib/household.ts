@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 
 /**
  * The household passcode gate. One shared passcode (HOUSEHOLD_PASSCODE) lets
@@ -40,9 +41,42 @@ async function constantTimeEqual(a: string, b: string): Promise<boolean> {
 }
 
 export async function checkPasscode(input: string): Promise<boolean> {
-  const expected = process.env.HOUSEHOLD_PASSCODE;
+  const expected = process.env.HOUSEHOLD_PASSCODE?.trim();
   if (!expected) return true;
   return constantTimeEqual(input.trim(), expected);
+}
+
+/**
+ * Guess limiting. A wrong passcode costs a one-second pause, and after
+ * FAILURE_LIMIT misses an address is refused for LOCKOUT_MS. The counter is
+ * in memory, so on serverless it is per instance and resets on redeploy: a
+ * speed bump against casual guessing, not a guarantee. The passcode's length
+ * (four or more random words) is the real defence.
+ */
+const WRONG_PASSCODE_DELAY_MS = 1000;
+const FAILURE_LIMIT = 10;
+const LOCKOUT_MS = 5 * 60 * 1000;
+const failures = new Map<string, { count: number; until: number }>();
+
+export function isLockedOut(ip: string): boolean {
+  const entry = failures.get(ip);
+  if (!entry) return false;
+  if (Date.now() > entry.until) {
+    failures.delete(ip);
+    return false;
+  }
+  return entry.count >= FAILURE_LIMIT;
+}
+
+export async function noteFailedAttempt(ip: string): Promise<void> {
+  const entry = failures.get(ip);
+  const count = entry && Date.now() <= entry.until ? entry.count + 1 : 1;
+  failures.set(ip, { count, until: Date.now() + LOCKOUT_MS });
+  await new Promise((resolve) => setTimeout(resolve, WRONG_PASSCODE_DELAY_MS));
+}
+
+export function clearFailedAttempts(ip: string): void {
+  failures.delete(ip);
 }
 
 async function signingKey(): Promise<CryptoKey> {
@@ -78,6 +112,9 @@ export async function verifySessionToken(token: string | undefined): Promise<boo
 
 /** True when the gate is off or the current request carries a valid session. */
 export async function isSignedIn(): Promise<boolean> {
+  // Wait for the request so Date.now() in verifySessionToken never runs
+  // during prerendering (same reason getDb() awaits connection()).
+  await connection();
   const store = await cookies();
   if (!isGateEnabled()) return true;
   return verifySessionToken(store.get(SESSION_COOKIE)?.value);
@@ -92,10 +129,22 @@ export async function requireHousehold(): Promise<void> {
 }
 
 /**
- * Only allow redirecting back to a path on this site (no `//evil.example`).
+ * Only allow redirecting back to a path on this site. Rejects anything a
+ * browser could read as another host: `//evil.example`, `/\evil.example`
+ * (browsers treat `\` as `/`), absolute URLs, and control characters. The
+ * URL parse against a fixed origin is the final word.
  */
 export function safeReturnPath(next: unknown): string {
   if (typeof next !== "string" || !next.startsWith("/") || next.startsWith("//")) return "/";
-  if (next === "/login" || next.startsWith("/login?")) return "/";
+  try {
+    // Check the raw and the once-decoded form so `%5C` cannot smuggle a backslash.
+    const unsafe = /[\\\u0000-\u001f\u007f]/;
+    if (unsafe.test(next) || unsafe.test(decodeURIComponent(next))) return "/";
+    const url = new URL(next, "http://x");
+    if (url.origin !== "http://x" || url.pathname + url.search + url.hash !== next) return "/";
+    if (url.pathname === "/login") return "/";
+  } catch {
+    return "/";
+  }
   return next;
 }

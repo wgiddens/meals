@@ -1,10 +1,13 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   checkPasscode,
+  clearFailedAttempts,
+  isLockedOut,
   issueSessionToken,
+  noteFailedAttempt,
   safeReturnPath,
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
@@ -14,10 +17,22 @@ import {
 
 export type SignInState = { error?: string } | null;
 
+async function clientIp(): Promise<string> {
+  const forwarded = (await headers()).get("x-forwarded-for") ?? "";
+  return forwarded.split(",")[0].trim() || "unknown";
+}
+
 export async function signInAction(_prev: SignInState, formData: FormData): Promise<SignInState> {
   const passcode = String(formData.get("passcode") ?? "");
   if (!passcode.trim()) return { error: "Enter the household passcode" };
-  if (!(await checkPasscode(passcode))) return { error: "That isn't the passcode" };
+
+  const ip = await clientIp();
+  if (isLockedOut(ip)) return { error: "Too many tries. Wait a few minutes and try again." };
+  if (!(await checkPasscode(passcode))) {
+    await noteFailedAttempt(ip);
+    return { error: "That isn't the passcode" };
+  }
+  clearFailedAttempts(ip);
 
   const store = await cookies();
   store.set({
