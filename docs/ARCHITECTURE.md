@@ -27,21 +27,25 @@ src/
     plan.ts          weekly supper plan
     grocery.ts       aggregate plan ingredients → shopping list
     today.ts         request-time "today" for pages
+    household.ts     passcode check + signed session cookie (the gate)
     ai/draft.ts      the shared recipe-draft schema and the Claude call that fills it
     ai/plate.ts      photo → draft (prompt + image input)
     ai/web.ts        page text → draft (fallback for URL import)
     import/          URL import: fetch guard, JSON-LD mapping, ingredient-line
                      parser + aisle guesser, HTML → text
+  proxy.ts           request interception: sends signed-out requests to /login
   app/
     page.tsx         Tonight + this week
     recipes/         list, detail, new, edit
     plan/            week editor
     grocery/         list with check-off and manual items
     actions.ts       Server Actions (all writes from the UI)
+    auth-actions.ts  sign in / sign out for the passcode gate
+    login/           the passcode page
     api/mcp/route.ts MCP endpoint for assistants
     api/plate/route.ts  photo upload → recipe draft JSON
     api/import/route.ts URL → recipe draft JSON
-  components/        RecipeForm (client), RecipeCard
+  components/        RecipeForm, LoginForm (client), RecipeCard, SignOutLink
 drizzle/             generated SQL migrations (committed)
 scripts/smoke.ts     end-to-end check of the data layer against a temp DB
 scripts/check-import.ts  importer checks against scripts/fixtures/import/*.html
@@ -96,6 +100,26 @@ documented functions. Auth is a shared bearer token (`MCP_API_KEY`); the
 endpoint also advertises RFC 9728 protected-resource metadata, so moving to
 OAuth later is additive. OAuth is on the roadmap (docs/PRODUCT.md), since
 ChatGPT's and Claude's connector UIs prefer it.
+
+## Household passcode gate
+
+Until real accounts exist, one shared passcode keeps the web app to the
+family. `HOUSEHOLD_PASSCODE` turns it on; when it is unset the app is open,
+so `npm run dev` needs no setup.
+
+- `src/proxy.ts` runs before every request (the Next.js 16 `proxy` file
+  convention, formerly `middleware`). Without a valid session cookie, page
+  requests are redirected to `/login?next=<path>` and `/api/*` requests get a
+  401. `/login`, `/api/mcp`, Next static assets and the favicon are exempt.
+- `/login` posts to `signInAction`, which compares the passcode in constant
+  time and sets an HttpOnly, SameSite=Lax cookie (Secure in production) that
+  lasts a year. The cookie holds `<issued-at>.<HMAC-SHA256>`; the signing key
+  is derived from the passcode, so there is no second secret and rotating the
+  passcode signs every device out. A footer link clears the cookie.
+- Server Actions are plain POSTs, so each one in `src/app/actions.ts` calls
+  `requireHousehold()` rather than trusting the proxy alone.
+- `/api/mcp` is deliberately outside the gate: assistants authenticate with
+  `MCP_API_KEY` as before.
 
 ## Photo → recipe
 
@@ -184,11 +208,11 @@ PR cancels the run it supersedes.
 
 1. Create a Supabase project (or any Postgres) and set `DATABASE_URL`.
 2. `npm run db:migrate` once per schema change (reads `drizzle/`).
-3. Deploy to Vercel with `DATABASE_URL`, `ANTHROPIC_API_KEY`, `MCP_API_KEY`
-   and `HOUSEHOLD_TIMEZONE` set.
+3. Deploy to Vercel with `DATABASE_URL`, `ANTHROPIC_API_KEY`, `MCP_API_KEY`,
+   `HOUSEHOLD_PASSCODE` and `HOUSEHOLD_TIMEZONE` set.
 4. Give the assistants `https://<your-domain>/api/mcp` and the bearer token.
+5. Give the family the URL and the passcode. Each phone enters it once.
 
-There are no user accounts; a shared household passcode is the planned
-protection (pull request #4) and multi-family accounts wait. Until the
-passcode lands, keep the deployment private (Vercel password protection or a
-private network) or accept that anyone with the URL can see the plan.
+The passcode is the access control for now; multi-family accounts are not on
+the roadmap yet (docs/PRODUCT.md). Without it, anyone with the URL can read
+and change the plan.

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist } from "next/font/google";
+import { Suspense } from "react";
+import { SignOutLink } from "@/components/SignOutLink";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -41,9 +43,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </nav>
         </header>
         <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-6">{children}</main>
-        <footer className="mx-auto w-full max-w-4xl px-4 py-6 text-xs text-stone-400">
-          Ask Claude, ChatGPT or Gemini &ldquo;what&rsquo;s for supper?&rdquo; once they&rsquo;re connected to
-          this app. See the README.
+        <footer className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-2 px-4 py-6 text-xs text-stone-400">
+          <span>
+            Ask Claude, ChatGPT or Gemini &ldquo;what&rsquo;s for supper?&rdquo; once they&rsquo;re connected to
+            this app. See the README.
+          </span>
+          <Suspense fallback={null}>
+            <SignOutLink />
+          </Suspense>
         </footer>
       </body>
     </html>

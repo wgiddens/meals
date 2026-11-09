@@ -133,8 +133,8 @@ milestones below build on.
   "cross milk off the list". No delete-recipe tool on purpose.
 - Runs locally with zero setup (embedded Postgres); deploys to Vercel +
   Supabase.
-
-Open pull request that fits this roadmap: the household passcode (#4).
+- Household passcode: one shared passcode (`HOUSEHOLD_PASSCODE`) gates the
+  web app; each phone signs in once. Assistants keep their own MCP token.
 
 ### Next
 
@@ -156,8 +156,8 @@ approved.
      week.
 2. **Approve on the phone.** Shannon and Will get a text with a link. The
    mobile page shows each dinner with Approve and Swap; swaps come from
-   favourites. Shannon's approval locks the plan. A shared household passcode
-   is enough to protect the page for now (PR #4).
+   favourites. Shannon's approval locks the plan. The shared household
+   passcode, already in place, protects the page for now.
 3. **Cooking feedback loop.** After meals, quick Loved it / Never again
    ratings feed future plans so suggestions improve week over week.
    - Each cook is rated; the recipe's family rating is the average of those
