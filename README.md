@@ -10,6 +10,8 @@ Claude, ChatGPT or Gemini looks at when you ask "what's for supper tonight?"
 - **Photo → recipe**: snap a plate, get a draft ingredient list and steps.
 - **Assistant access** over MCP so any AI chat can read and update the plan.
 
+Where it's heading: a dinner plan drafted for us every Saturday, approved on
+Shannon's phone in a few taps, and one Walmart pickup for the groceries.
 Product vision and roadmap: [docs/PRODUCT.md](docs/PRODUCT.md).
 How it's built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -124,10 +126,15 @@ There is deliberately no delete-recipe tool; deleting is a website action.
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` (embedded DB migrates itself) |
 | `npm run db:studio` | Browse the database |
 
-## Deploying
+## Contributing and deploying
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deployment). Short version:
-Vercel + a Supabase Postgres, four environment variables, run
-`npm run db:migrate` once. There are no user accounts yet, so keep the
-deployment private until that lands (it's the first item under "Next" in the
-roadmap).
+`main` is the production branch: every push to it deploys to Vercel. Work on
+a branch and open a pull request into `main`. CI (GitHub Actions) runs
+typecheck, lint, smoke and build on every pull request, and the check must be
+green before the PR is merged.
+
+Hosting details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deployment).
+Short version: Vercel + a Supabase Postgres, four environment variables, run
+`npm run db:migrate` once. There are no user accounts, and a shared household
+passcode is the planned protection (pull request #4), so keep the deployment
+private until that lands.
