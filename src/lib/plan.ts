@@ -77,12 +77,25 @@ export async function setMeal(input: SetMealInput): Promise<PlannedMealWithRecip
   return getSupper(input.date);
 }
 
-export async function markCooked(date: string, cooked = true, meal = SUPPER) {
+/**
+ * Flag the meal planned for a date as cooked (or not). Returns the updated
+ * meal, or null when nothing is planned for that date, so callers can tell
+ * "marked" from "there was nothing to mark".
+ */
+export async function markCooked(
+  date: string,
+  cooked = true,
+  meal = SUPPER,
+): Promise<PlannedMealWithRecipe | null> {
   const db = await getDb();
-  await db
+  const [row] = await db
     .update(plannedMeals)
     .set({ cooked })
-    .where(and(eq(plannedMeals.date, date), eq(plannedMeals.meal, meal)));
+    .where(and(eq(plannedMeals.date, date), eq(plannedMeals.meal, meal)))
+    .returning();
+  if (!row) return null;
+  const [updated] = await mealsBetween(date, date, meal);
+  return updated ?? null;
 }
 
 /** Plain-English description of a planned meal, for the assistant tools. */

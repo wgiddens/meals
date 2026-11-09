@@ -38,6 +38,27 @@ export const recipeInputSchema = z.object({
 export type RecipeInput = z.input<typeof recipeInputSchema>;
 export type RecipeWithIngredients = Recipe & { ingredients: RecipeIngredient[] };
 
+/**
+ * A partial edit: only the fields present are changed. `ingredients`, when
+ * given, replaces the whole ingredient list (there is no per-line merge).
+ */
+export const recipePatchSchema = z.object({
+  title: z.string().trim().min(1, "Title is required").optional(),
+  description: z.string().trim().nullable().optional(),
+  sourceUrl: z.string().trim().url().nullable().optional().or(z.literal("")),
+  servings: z.number().int().positive().nullable().optional(),
+  prepMinutes: z.number().int().nonnegative().nullable().optional(),
+  cookMinutes: z.number().int().nonnegative().nullable().optional(),
+  complexity: z.enum(complexities).optional(),
+  rating: z.number().int().min(1).max(5).nullable().optional(),
+  tags: z.array(z.string().trim().min(1)).optional(),
+  instructions: z.string().trim().nullable().optional(),
+  notes: z.string().trim().nullable().optional(),
+  ingredients: z.array(ingredientInputSchema).optional(),
+});
+
+export type RecipePatch = z.input<typeof recipePatchSchema>;
+
 export type RecipeFilter = {
   query?: string;
   maxMinutes?: number;
@@ -115,6 +136,32 @@ export async function findRecipeByTitle(
   return partial ?? null;
 }
 
+/**
+ * Every recipe whose title matches, for callers that need to detect
+ * ambiguity (the assistant tools). A case-insensitive exact title match wins
+ * outright; otherwise all substring matches are returned, best-rated first.
+ */
+export async function findRecipesByTitle(
+  title: string,
+  limit = 10,
+): Promise<RecipeWithIngredients[]> {
+  const needle = title.trim();
+  if (!needle) return [];
+  const db = await getDb();
+  const exact = await db.query.recipes.findMany({
+    where: ilike(recipes.title, needle),
+    limit,
+    with: { ingredients: { orderBy: [asc(recipeIngredients.position)] } },
+  });
+  if (exact.length) return exact;
+  return db.query.recipes.findMany({
+    where: ilike(recipes.title, `%${needle}%`),
+    orderBy: [desc(recipes.rating), asc(recipes.title)],
+    limit,
+    with: { ingredients: { orderBy: [asc(recipeIngredients.position)] } },
+  });
+}
+
 export async function getRecipesByIds(
   ids: string[],
 ): Promise<RecipeWithIngredients[]> {
@@ -184,19 +231,84 @@ export async function updateRecipe(
 ): Promise<RecipeWithIngredients> {
   const input = recipeInputSchema.parse(raw);
   const db = await getDb();
-  const [row] = await db
-    .update(recipes)
-    .set({ ...toRecipeRow(input), updatedAt: new Date() })
-    .where(eq(recipes.id, id))
-    .returning();
-  if (!row) throw new Error("Recipe not found");
-  await db.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
-  if (input.ingredients.length) {
-    await db
-      .insert(recipeIngredients)
-      .values(toIngredientRows(id, input.ingredients));
-  }
+  // One transaction so a failure can never leave the recipe with no ingredients.
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(recipes)
+      .set({ ...toRecipeRow(input), updatedAt: new Date() })
+      .where(eq(recipes.id, id))
+      .returning();
+    if (!row) throw new Error("Recipe not found");
+    await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
+    if (input.ingredients.length) {
+      await tx
+        .insert(recipeIngredients)
+        .values(toIngredientRows(id, input.ingredients));
+    }
+  });
   return (await getRecipe(id))!;
+}
+
+/**
+ * Change only the given fields of a recipe. Unlike updateRecipe this leaves
+ * the ingredient list alone unless `ingredients` is supplied, in which case
+ * the whole list is replaced.
+ */
+export async function patchRecipe(
+  id: string,
+  raw: RecipePatch,
+): Promise<RecipeWithIngredients> {
+  const patch = recipePatchSchema.parse(raw);
+  const db = await getDb();
+  const set: Partial<typeof recipes.$inferInsert> = { updatedAt: new Date() };
+  if (patch.title !== undefined) set.title = patch.title;
+  if (patch.description !== undefined) set.description = patch.description || null;
+  if (patch.sourceUrl !== undefined) set.sourceUrl = patch.sourceUrl || null;
+  if (patch.servings !== undefined) set.servings = patch.servings;
+  if (patch.prepMinutes !== undefined) set.prepMinutes = patch.prepMinutes;
+  if (patch.cookMinutes !== undefined) set.cookMinutes = patch.cookMinutes;
+  if (patch.complexity !== undefined) set.complexity = patch.complexity;
+  if (patch.rating !== undefined) set.rating = patch.rating;
+  if (patch.tags !== undefined) set.tags = cleanTags(patch.tags);
+  if (patch.instructions !== undefined) set.instructions = patch.instructions || null;
+  if (patch.notes !== undefined) set.notes = patch.notes || null;
+
+  const ingredients = patch.ingredients;
+  await db.transaction(async (tx) => {
+    const [row] = await tx.update(recipes).set(set).where(eq(recipes.id, id)).returning();
+    if (!row) throw new Error("Recipe not found");
+    if (ingredients !== undefined) {
+      await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, id));
+      if (ingredients.length) {
+        await tx.insert(recipeIngredients).values(toIngredientRows(id, ingredients));
+      }
+    }
+  });
+  return (await getRecipe(id))!;
+}
+
+/**
+ * Record how the family liked a recipe (1-5) and/or append a note to its
+ * notes as a new paragraph, so "we had it, it was a 4, needs more salt" lands
+ * in one call without losing the existing notes. Either may be omitted, but
+ * not both. Omitting the rating leaves the current one untouched.
+ */
+export async function rateRecipe(
+  id: string,
+  rating?: number | null,
+  note?: string | null,
+): Promise<RecipeWithIngredients> {
+  const trimmed = note?.trim();
+  const hasRating = rating !== undefined && rating !== null;
+  if (!hasRating && !trimmed) throw new Error("Give a rating, a note, or both.");
+  const patch: RecipePatch = {};
+  if (hasRating) patch.rating = z.number().int().min(1).max(5).parse(rating);
+  if (trimmed) {
+    const existing = await getRecipe(id);
+    if (!existing) throw new Error("Recipe not found");
+    patch.notes = existing.notes ? `${existing.notes}\n\n${trimmed}` : trimmed;
+  }
+  return patchRecipe(id, patch);
 }
 
 export async function deleteRecipe(id: string): Promise<void> {

@@ -7,9 +7,14 @@ Claude, ChatGPT or Gemini looks at when you ask "what's for supper tonight?"
 - **Plan** supper for each night of the week. A recipe, or just "leftovers".
 - **Groceries** built from the plan, combined across recipes, grouped by aisle,
   checkable on a phone in the store.
+- **Link → recipe**: paste a recipe URL, get a draft to review and save.
+  Works offline from the site's own recipe data; Claude reads pages that
+  have none.
 - **Photo → recipe**: snap a plate, get a draft ingredient list and steps.
 - **Assistant access** over MCP so any AI chat can read and update the plan.
 
+Where it's heading: a dinner plan drafted for us every Saturday, approved on
+Shannon's phone in a few taps, and one Walmart pickup for the groceries.
 Product vision and roadmap: [docs/PRODUCT.md](docs/PRODUCT.md).
 How it's built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -39,7 +44,7 @@ Copy `.env.example` to `.env.local` and fill in what you need:
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page. |
+| `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page, and lets "Start from a link" read pages that publish no recipe data. |
 | `MCP_API_KEY` | Bearer token assistants must send to `/api/mcp`. Unset = open, fine on localhost only. |
 | `HOUSEHOLD_TIMEZONE` | What "tonight" means. Default `America/New_York`. |
 | `HOUSEHOLD_PASSCODE` | Shared passcode for the web app's `/login` page. Unset = open, fine on localhost only. Set it on any deployment. |
@@ -83,7 +88,8 @@ developer mode today, and OAuth is on the roadmap.
 
 Once connected, try: "What's for supper tonight?", "What could we make in
 under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
-"What's left on the grocery list?"
+"We had it, it was a 4", "Cross milk off the list", "What's left on the
+grocery list?"
 
 ### Tools exposed
 
@@ -92,11 +98,24 @@ under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
 | `whats_for_supper` | Tonight's (or any date's) planned supper with timing and complexity |
 | `get_meal_plan` | The plan for a run of days (default: this week) |
 | `plan_meal` | Set a recipe or a note for a date, or clear it |
+| `mark_cooked` | Record that a date's supper was cooked ("we had it"), or undo it |
 | `list_recipes` | Search by text, max minutes, complexity, tag, rating |
 | `get_recipe` | Full ingredients and steps |
 | `add_recipe` | Save a new recipe |
+| `rate_recipe` | Family rating 1–5 after eating, with an optional note appended |
+| `update_recipe` | Edit any recipe fields; optionally replace the ingredient list |
 | `get_grocery_list` | Current list, optionally rebuilt from the plan |
 | `add_grocery_item` | Add a non-recipe item (milk, paper towels) |
+| `check_grocery_item` | Tick an item off (or back on) by id or name; returns what's left |
+| `remove_grocery_item` | Take an item off the list by id or name |
+
+Tools that change data and take an id *or* a name/title (`plan_meal`,
+`rate_recipe`, `update_recipe`, `check_grocery_item`, `remove_grocery_item`)
+resolve a case-insensitive exact match first, then a partial match. If several
+recipes or items match, the tool returns an error listing the candidates with
+their ids rather than guessing. The read-only `get_recipe` returns the best
+match. `rate_recipe` takes a rating, a note, or both.
+There is deliberately no delete-recipe tool; deleting is a website action.
 
 ## Scripts
 
@@ -105,7 +124,8 @@ under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
 | `npm run dev` | Dev server |
 | `npm run build` / `npm start` | Production build and server |
 | `npm run typecheck` / `npm run lint` | TypeScript and ESLint |
-| `npm run smoke` | End-to-end check of the data layer on a throwaway database |
+| `npm run smoke` | Runs `check:import`, then an end-to-end check of the data layer on a throwaway database |
+| `npm run check:import` | Checks the URL importer against the fixture pages in `scripts/fixtures/import` (no network, no API key) |
 | `npm run db:seed` | Add starter recipes |
 | `npm run db:generate` | Generate a SQL migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` (embedded DB migrates itself) |

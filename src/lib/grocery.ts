@@ -179,14 +179,38 @@ export async function addManualItem(input: {
   return (await getCurrentList())!;
 }
 
-export async function setItemChecked(itemId: string, checked: boolean) {
+export async function setItemChecked(itemId: string, checked: boolean): Promise<GroceryItem | null> {
   const db = await getDb();
-  await db.update(groceryItems).set({ checked }).where(eq(groceryItems.id, itemId));
+  const [row] = await db
+    .update(groceryItems)
+    .set({ checked })
+    .where(eq(groceryItems.id, itemId))
+    .returning();
+  return row ?? null;
 }
 
-export async function removeItem(itemId: string) {
+export async function removeItem(itemId: string): Promise<GroceryItem | null> {
   const db = await getDb();
-  await db.delete(groceryItems).where(eq(groceryItems.id, itemId));
+  const [row] = await db.delete(groceryItems).where(eq(groceryItems.id, itemId)).returning();
+  return row ?? null;
+}
+
+/**
+ * Items on a list whose name matches what someone said ("milk", "the
+ * tomatoes"). An exact match on the normalized name wins outright; otherwise
+ * every item whose normalized name contains the words is returned, so the
+ * caller can ask which one was meant.
+ */
+export function findItemsByName(items: GroceryItem[], name: string): GroceryItem[] {
+  const needle = normalizeName(name);
+  if (!needle) return [];
+  const exact = items.filter((i) => normalizeName(i.name) === needle);
+  if (exact.length) return exact;
+  return items.filter((i) => normalizeName(i.name).includes(needle));
+}
+
+export function uncheckedCount(items: GroceryItem[]): number {
+  return items.filter((i) => !i.checked).length;
 }
 
 export function groupByCategory(items: GroceryItem[]) {

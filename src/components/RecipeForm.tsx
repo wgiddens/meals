@@ -3,7 +3,8 @@
 import { useActionState, useState } from "react";
 import { saveRecipeAction, type ActionState } from "@/app/actions";
 import { complexities, ingredientCategories, type Complexity, type IngredientCategory } from "@/db/schema";
-import type { PlateAnalysis } from "@/lib/ai/plate";
+import type { RecipeDraft } from "@/lib/ai/draft";
+import type { ImportMethod } from "@/lib/import";
 import { complexityLabel } from "@/lib/format";
 import type { RecipeInput } from "@/lib/recipes";
 
@@ -96,6 +97,17 @@ function numOrNull(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Shown above the form after a draft lands: where it came from and what to double-check. */
+type DraftNotice = { heading: string; items: string[] };
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "the page";
+  }
+}
+
 export function RecipeForm({
   recipeId,
   initial,
@@ -107,7 +119,7 @@ export function RecipeForm({
 }) {
   const [values, setValues] = useState<RecipeFormValues>(initial ?? EMPTY);
   const [source, setSource] = useState<string | undefined>(undefined);
-  const [assumptions, setAssumptions] = useState<string[]>([]);
+  const [notice, setNotice] = useState<DraftNotice | null>(null);
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     saveRecipeAction.bind(null, recipeId),
     null,
@@ -122,11 +134,12 @@ export function RecipeForm({
       ingredients: v.ingredients.map((ing, i) => (i === index ? { ...ing, ...patch } : ing)),
     }));
 
-  const applyDraft = (draft: PlateAnalysis) => {
+  /** Pre-fill the form from a draft, whichever "start from …" path produced it. */
+  const applyDraft = (draft: RecipeDraft, meta: { source: string; sourceUrl?: string; notice: DraftNotice | null }) => {
     setValues({
       title: draft.title,
       description: draft.description,
-      sourceUrl: "",
+      sourceUrl: meta.sourceUrl ?? "",
       servings: draft.servings,
       prepMinutes: draft.prep_minutes,
       cookMinutes: draft.cook_minutes,
@@ -135,32 +148,68 @@ export function RecipeForm({
       tags: draft.tags.join(", "),
       instructions: draft.instructions,
       notes: "",
-      ingredients: draft.ingredients.map((i) => ({
-        name: i.name,
-        quantity: i.quantity == null ? "" : String(i.quantity),
-        unit: i.unit ?? "",
-        note: i.note ?? "",
-        category: i.category,
-      })),
+      ingredients: draft.ingredients.length
+        ? draft.ingredients.map((i) => ({
+            name: i.name,
+            quantity: i.quantity == null ? "" : String(Math.round(i.quantity * 1000) / 1000),
+            unit: i.unit ?? "",
+            note: i.note ?? "",
+            category: i.category,
+          }))
+        : [{ ...EMPTY_INGREDIENT }],
     });
-    setSource("photo");
-    setAssumptions(draft.assumptions);
+    setSource(meta.source);
+    setNotice(meta.notice);
+  };
+
+  const applyPhotoDraft = (draft: RecipeDraft) =>
+    applyDraft(draft, {
+      source: "photo",
+      notice: draft.assumptions.length
+        ? { heading: "The photo analysis guessed at a few things. Double-check:", items: draft.assumptions }
+        : null,
+    });
+
+  const applyLinkDraft = (result: { draft: RecipeDraft; method: ImportMethod; sourceUrl: string }) => {
+    const host = hostOf(result.sourceUrl);
+    const items =
+      result.method === "jsonld"
+        ? [
+            `Read the recipe data ${host} publishes for search engines, so quantities and steps are the site's own.`,
+            "Units, store aisles and the effort level were worked out automatically. Give them a once-over.",
+          ]
+        : [
+            `${host} has no recipe data, so Claude read the page text and drafted this. Compare it against the page.`,
+            ...result.draft.assumptions,
+          ];
+    applyDraft(result.draft, {
+      source: "web",
+      sourceUrl: result.sourceUrl,
+      notice: { heading: `Imported from ${host}.`, items },
+    });
   };
 
   const err = state?.fieldErrors ?? {};
 
   return (
     <form action={formAction} className="space-y-6">
-      {recipeId === null ? <PlateAnalyzer enabled={photoEnabled} onDraft={applyDraft} /> : null}
+      {recipeId === null ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <LinkImporter onDraft={applyLinkDraft} />
+          <PlateAnalyzer enabled={photoEnabled} onDraft={applyPhotoDraft} />
+        </div>
+      ) : null}
 
-      {assumptions.length ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          <p className="font-medium">The photo analysis guessed at a few things. Double-check:</p>
-          <ul className="mt-1 list-disc pl-5">
-            {assumptions.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
+      {notice ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" data-testid="draft-notice">
+          <p className="font-medium">{notice.heading}</p>
+          {notice.items.length ? (
+            <ul className="mt-1 list-disc pl-5">
+              {notice.items.map((a, i) => (
+                <li key={i}>{a}</li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
@@ -389,7 +438,7 @@ function PlateAnalyzer({
   onDraft,
 }: {
   enabled: boolean;
-  onDraft: (draft: PlateAnalysis) => void;
+  onDraft: (draft: RecipeDraft) => void;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [hint, setHint] = useState("");
@@ -405,7 +454,7 @@ function PlateAnalyzer({
       body.append("photo", file);
       if (hint.trim()) body.append("hint", hint.trim());
       const res = await fetch("/api/plate", { method: "POST", body });
-      const json = (await res.json()) as { draft?: PlateAnalysis; error?: string };
+      const json = (await res.json()) as { draft?: RecipeDraft; error?: string };
       if (!res.ok || !json.draft) throw new Error(json.error ?? "Analysis failed");
       onDraft(json.draft);
     } catch (e) {
@@ -452,6 +501,81 @@ function PlateAnalyzer({
         </div>
       )}
       {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
+    </section>
+  );
+}
+
+function LinkImporter({
+  onDraft,
+}: {
+  onDraft: (result: { draft: RecipeDraft; method: ImportMethod; sourceUrl: string }) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function importUrl() {
+    if (!url.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: url.trim() }),
+      });
+      const json = (await res.json()) as {
+        draft?: RecipeDraft;
+        method?: ImportMethod;
+        sourceUrl?: string;
+        error?: string;
+      };
+      if (!res.ok || !json.draft || !json.method || !json.sourceUrl) {
+        throw new Error(json.error ?? "Import failed");
+      }
+      onDraft({ draft: json.draft, method: json.method, sourceUrl: json.sourceUrl });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="card border-dashed">
+      <h2 className="font-semibold">Start from a link</h2>
+      <p className="mt-1 text-sm text-stone-600">
+        Paste a recipe page and the app will pull out the ingredients and steps for you to tidy up.
+      </p>
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <label className="flex-1">
+          <span className="mb-1 block text-xs font-medium text-stone-600">Recipe URL</span>
+          <input
+            className="input"
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void importUrl();
+              }
+            }}
+            placeholder="https://example.com/best-chili"
+            aria-label="Recipe URL"
+          />
+        </label>
+        <button type="button" className="btn btn-secondary" onClick={importUrl} disabled={!url.trim() || busy}>
+          {busy ? "Fetching…" : "Fetch the recipe"}
+        </button>
+      </div>
+      {error ? (
+        <p className="mt-2 text-sm text-red-700" role="alert" data-testid="import-error">
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }

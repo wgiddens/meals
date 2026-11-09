@@ -1,7 +1,9 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { z } from "zod";
-import { complexities, ingredientCategories } from "@/db/schema";
+import {
+  assertApiKey,
+  recipeDraftSchema,
+  requestRecipeDraft,
+  type ModelRecipeDraft,
+} from "./draft";
 
 /**
  * "Take a picture of a plate and figure out what you'd need to make it."
@@ -9,40 +11,12 @@ import { complexities, ingredientCategories } from "@/db/schema";
  * Sends the photo to Claude and asks for a structured recipe draft: a title,
  * the ingredient list with rough quantities and store categories, timing, and
  * steps. The draft is meant to be reviewed and edited in the recipe form, not
- * saved blindly.
+ * saved blindly. The schema and the call itself live in `draft.ts` so the
+ * URL import's Claude fallback produces the identical shape.
  */
 
-export const plateAnalysisSchema = z.object({
-  title: z.string().describe("Short name for the dish, as a home cook would call it"),
-  description: z
-    .string()
-    .describe("One or two sentences describing the dish as seen"),
-  confidence: z
-    .enum(["high", "medium", "low"])
-    .describe("How sure you are about what the dish is"),
-  servings: z.number().int().describe("Servings the recipe below makes; 4-6 for a family"),
-  prep_minutes: z.number().int(),
-  cook_minutes: z.number().int(),
-  complexity: z.enum(complexities),
-  tags: z.array(z.string()).describe("3-6 lowercase tags: cuisine, protein, style, e.g. 'mexican', 'chicken', 'weeknight'"),
-  ingredients: z.array(
-    z.object({
-      name: z.string(),
-      quantity: z.number().nullable().describe("Numeric amount, or null if 'to taste'"),
-      unit: z.string().nullable().describe("e.g. 'cup', 'tbsp', 'lb', 'clove'; null for countable items"),
-      note: z.string().nullable().describe("Prep note such as 'diced' or 'optional'"),
-      category: z.enum(ingredientCategories),
-    }),
-  ),
-  instructions: z
-    .string()
-    .describe("Numbered steps, one per line, written for a home cook"),
-  assumptions: z
-    .array(z.string())
-    .describe("Things you guessed that the cook should double-check"),
-});
-
-export type PlateAnalysis = z.infer<typeof plateAnalysisSchema>;
+export const plateAnalysisSchema = recipeDraftSchema;
+export type PlateAnalysis = ModelRecipeDraft;
 
 export const SUPPORTED_IMAGE_TYPES = [
   "image/jpeg",
@@ -69,52 +43,21 @@ export async function analyzePlatePhoto(input: {
   mediaType: SupportedImageType;
   hint?: string;
 }): Promise<PlateAnalysis> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error(
-      "ANTHROPIC_API_KEY is not set. Add it to .env.local to enable photo analysis.",
-    );
-  }
-  const client = new Anthropic();
+  assertApiKey("photo analysis");
 
   const userText = input.hint?.trim()
     ? `Here is a photo of a plate of food. Extra context from the cook: "${input.hint.trim()}". Work out the recipe.`
     : "Here is a photo of a plate of food. Work out the recipe.";
 
-  const response = await client.messages.parse({
-    model: "claude-opus-5-5",
-    max_tokens: 16000,
+  return requestRecipeDraft({
     system: SYSTEM_PROMPT,
-    messages: [
+    subject: "photo",
+    content: [
       {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: input.mediaType,
-              data: input.base64,
-            },
-          },
-          { type: "text", text: userText },
-        ],
+        type: "image",
+        source: { type: "base64", media_type: input.mediaType, data: input.base64 },
       },
+      { type: "text", text: userText },
     ],
-    output_config: {
-      effort: "medium",
-      format: zodOutputFormat(plateAnalysisSchema),
-    },
   });
-
-  if (response.stop_reason === "refusal") {
-    throw new Error(
-      `The model declined to analyze this photo${
-        response.stop_details?.explanation ? `: ${response.stop_details.explanation}` : "."
-      }`,
-    );
-  }
-  if (!response.parsed_output) {
-    throw new Error("Could not read a recipe out of the model's response. Try another photo.");
-  }
-  return response.parsed_output;
 }
