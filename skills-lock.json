@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ccpm": {
+      "source": "automazeio/ccpm",
+      "sourceType": "github",
+      "skillPath": "skill/ccpm/SKILL.md",
+      "computedHash": "e79fce7d6a5d91ff23f255744b532a0fdd9425a339d8eccee7c0020f065401eb"
+    }
+  }
+}
