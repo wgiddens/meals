@@ -7,6 +7,9 @@ Claude, ChatGPT or Gemini looks at when you ask "what's for supper tonight?"
 - **Plan** supper for each night of the week. A recipe, or just "leftovers".
 - **Groceries** built from the plan, combined across recipes, grouped by aisle,
   checkable on a phone in the store.
+- **Link → recipe**: paste a recipe URL, get a draft to review and save.
+  Works offline from the site's own recipe data; Claude reads pages that
+  have none.
 - **Photo → recipe**: snap a plate, get a draft ingredient list and steps.
 - **Assistant access** over MCP so any AI chat can read and update the plan.
 
@@ -41,7 +44,7 @@ Copy `.env.example` to `.env.local` and fill in what you need:
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page. |
+| `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page, and lets "Start from a link" read pages that publish no recipe data. |
 | `MCP_API_KEY` | Bearer token assistants must send to `/api/mcp`. Unset = open, fine on localhost only. |
 | `HOUSEHOLD_TIMEZONE` | What "tonight" means. Default `America/New_York`. |
 | `DATABASE_URL` | Use a real Postgres (e.g. Supabase) instead of the embedded one. |
@@ -120,7 +123,8 @@ There is deliberately no delete-recipe tool; deleting is a website action.
 | `npm run dev` | Dev server |
 | `npm run build` / `npm start` | Production build and server |
 | `npm run typecheck` / `npm run lint` | TypeScript and ESLint |
-| `npm run smoke` | End-to-end check of the data layer on a throwaway database |
+| `npm run smoke` | Runs `check:import`, then an end-to-end check of the data layer on a throwaway database |
+| `npm run check:import` | Checks the URL importer against the fixture pages in `scripts/fixtures/import` (no network, no API key) |
 | `npm run db:seed` | Add starter recipes |
 | `npm run db:generate` | Generate a SQL migration after editing `src/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` (embedded DB migrates itself) |

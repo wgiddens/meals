@@ -12,7 +12,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx --tsconfig tsconfig.json src/db/seed.ts",
-    "smoke": "tsx --tsconfig tsconfig.json scripts/smoke.ts"
+    "check:import": "tsx --tsconfig tsconfig.json scripts/check-import.ts",
+    "smoke": "npm run check:import && tsx --tsconfig tsconfig.json scripts/smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",

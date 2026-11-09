@@ -122,6 +122,9 @@ milestones below build on.
 - Grocery list built from a plan window, combined across recipes, grouped by
   aisle. Checked-off state and hand-added items survive a rebuild.
 - Photo → recipe draft.
+- Import from a recipe link: paste a URL, get the same draft to review before
+  saving. Reads the recipe data most sites publish (no API key needed); for
+  pages without it, Claude drafts from the page text.
 - Assistant access over MCP, read and write: `whats_for_supper`,
   `get_meal_plan`, `plan_meal`, `mark_cooked`, `list_recipes`, `get_recipe`,
   `add_recipe`, `rate_recipe`, `update_recipe`, `get_grocery_list`,
@@ -131,8 +134,7 @@ milestones below build on.
 - Runs locally with zero setup (embedded Postgres); deploys to Vercel +
   Supabase.
 
-Open pull requests that fit this roadmap: the household passcode (#4) and
-import from a recipe link (#2).
+Open pull request that fits this roadmap: the household passcode (#4).
 
 ### Next
 
