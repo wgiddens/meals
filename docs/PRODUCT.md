@@ -122,14 +122,17 @@ milestones below build on.
 - Grocery list built from a plan window, combined across recipes, grouped by
   aisle. Checked-off state and hand-added items survive a rebuild.
 - Photo → recipe draft.
-- Assistant access over MCP: `whats_for_supper`, `get_meal_plan`,
-  `plan_meal`, `list_recipes`, `get_recipe`, `add_recipe`,
-  `get_grocery_list`, `add_grocery_item`.
+- Assistant access over MCP, read and write: `whats_for_supper`,
+  `get_meal_plan`, `plan_meal`, `mark_cooked`, `list_recipes`, `get_recipe`,
+  `add_recipe`, `rate_recipe`, `update_recipe`, `get_grocery_list`,
+  `add_grocery_item`, `check_grocery_item`, `remove_grocery_item`. Enough to
+  run the plan from a chat: "what's for supper?", "we had it, it was a 4",
+  "cross milk off the list". No delete-recipe tool on purpose.
 - Runs locally with zero setup (embedded Postgres); deploys to Vercel +
   Supabase.
 
-Open pull requests that fit this roadmap: the household passcode (#4), import
-from a recipe link (#2), and MCP write tools for mark cooked and rate (#1).
+Open pull requests that fit this roadmap: the household passcode (#4) and
+import from a recipe link (#2).
 
 ### Next
 

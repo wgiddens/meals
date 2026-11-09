@@ -84,7 +84,8 @@ developer mode today, and OAuth is on the roadmap.
 
 Once connected, try: "What's for supper tonight?", "What could we make in
 under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
-"What's left on the grocery list?"
+"We had it, it was a 4", "Cross milk off the list", "What's left on the
+grocery list?"
 
 ### Tools exposed
 
@@ -93,11 +94,24 @@ under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
 | `whats_for_supper` | Tonight's (or any date's) planned supper with timing and complexity |
 | `get_meal_plan` | The plan for a run of days (default: this week) |
 | `plan_meal` | Set a recipe or a note for a date, or clear it |
+| `mark_cooked` | Record that a date's supper was cooked ("we had it"), or undo it |
 | `list_recipes` | Search by text, max minutes, complexity, tag, rating |
 | `get_recipe` | Full ingredients and steps |
 | `add_recipe` | Save a new recipe |
+| `rate_recipe` | Family rating 1–5 after eating, with an optional note appended |
+| `update_recipe` | Edit any recipe fields; optionally replace the ingredient list |
 | `get_grocery_list` | Current list, optionally rebuilt from the plan |
 | `add_grocery_item` | Add a non-recipe item (milk, paper towels) |
+| `check_grocery_item` | Tick an item off (or back on) by id or name; returns what's left |
+| `remove_grocery_item` | Take an item off the list by id or name |
+
+Tools that change data and take an id *or* a name/title (`plan_meal`,
+`rate_recipe`, `update_recipe`, `check_grocery_item`, `remove_grocery_item`)
+resolve a case-insensitive exact match first, then a partial match. If several
+recipes or items match, the tool returns an error listing the candidates with
+their ids rather than guessing. The read-only `get_recipe` returns the best
+match. `rate_recipe` takes a rating, a note, or both.
+There is deliberately no delete-recipe tool; deleting is a website action.
 
 ## Scripts
 
