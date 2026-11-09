@@ -8,7 +8,7 @@
 | Styling | Tailwind CSS 4 | Small, mobile-first pages without a component library to maintain. |
 | Database | Postgres via Drizzle ORM | Relational data (recipes ↔ ingredients ↔ plan ↔ list). Drizzle gives typed queries and SQL migrations. |
 | Local DB | PGlite (embedded Postgres, WASM) | `npm run dev` works with no services installed. Same SQL dialect as production, so no "works on SQLite but not Postgres" surprises. Data lives in `./data/pglite`. |
-| Hosted DB | Supabase Postgres (any Postgres works) | Set `DATABASE_URL`. Supabase also gives us Auth and Storage for the "Next" roadmap items. |
+| Hosted DB | Supabase Postgres (any Postgres works) | Set `DATABASE_URL`. Supabase also offers Auth and Storage if we need them later. |
 | AI | Anthropic SDK (`@anthropic-ai/sdk`), Claude Opus 5.5 | Vision + structured output for photo → recipe. Called server-side only. |
 | Assistant integration | MCP over Streamable HTTP (`mcp-handler` + `@modelcontextprotocol/server`) | One endpoint that Claude, ChatGPT and Gemini can all connect to. |
 
@@ -88,8 +88,8 @@ for the same reason.
 Tools are registered with zod input schemas, so each assistant sees typed,
 documented functions. Auth is a shared bearer token (`MCP_API_KEY`); the
 endpoint also advertises RFC 9728 protected-resource metadata, so moving to
-OAuth later is additive. Expect to add OAuth before sharing the URL beyond
-the household, since ChatGPT's connector UI prefers it.
+OAuth later is additive. OAuth is on the roadmap (docs/PRODUCT.md), since
+ChatGPT's and Claude's connector UIs prefer it.
 
 ## Photo → recipe
 
@@ -130,5 +130,7 @@ PR cancels the run it supersedes.
    and `HOUSEHOLD_TIMEZONE` set.
 4. Give the assistants `https://<your-domain>/api/mcp` and the bearer token.
 
-Until accounts exist, keep the deployment private (Vercel password protection
-or a private network) or accept that anyone with the URL can see the plan.
+There are no user accounts; a shared household passcode is the planned
+protection (pull request #4) and multi-family accounts wait. Until the
+passcode lands, keep the deployment private (Vercel password protection or a
+private network) or accept that anyone with the URL can see the plan.
