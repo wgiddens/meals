@@ -13,6 +13,8 @@ Claude, ChatGPT or Gemini looks at when you ask "what's for supper tonight?"
 - **Photo → recipe**: snap a plate, get a draft ingredient list and steps.
 - **Assistant access** over MCP so any AI chat can read and update the plan.
 
+Where it's heading: a dinner plan drafted for us every Saturday, approved on
+Shannon's phone in a few taps, and one Walmart pickup for the groceries.
 Product vision and roadmap: [docs/PRODUCT.md](docs/PRODUCT.md).
 How it's built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -85,7 +87,8 @@ developer mode today, and OAuth is on the roadmap.
 
 Once connected, try: "What's for supper tonight?", "What could we make in
 under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
-"What's left on the grocery list?"
+"We had it, it was a 4", "Cross milk off the list", "What's left on the
+grocery list?"
 
 ### Tools exposed
 
@@ -94,11 +97,24 @@ under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
 | `whats_for_supper` | Tonight's (or any date's) planned supper with timing and complexity |
 | `get_meal_plan` | The plan for a run of days (default: this week) |
 | `plan_meal` | Set a recipe or a note for a date, or clear it |
+| `mark_cooked` | Record that a date's supper was cooked ("we had it"), or undo it |
 | `list_recipes` | Search by text, max minutes, complexity, tag, rating |
 | `get_recipe` | Full ingredients and steps |
 | `add_recipe` | Save a new recipe |
+| `rate_recipe` | Family rating 1–5 after eating, with an optional note appended |
+| `update_recipe` | Edit any recipe fields; optionally replace the ingredient list |
 | `get_grocery_list` | Current list, optionally rebuilt from the plan |
 | `add_grocery_item` | Add a non-recipe item (milk, paper towels) |
+| `check_grocery_item` | Tick an item off (or back on) by id or name; returns what's left |
+| `remove_grocery_item` | Take an item off the list by id or name |
+
+Tools that change data and take an id *or* a name/title (`plan_meal`,
+`rate_recipe`, `update_recipe`, `check_grocery_item`, `remove_grocery_item`)
+resolve a case-insensitive exact match first, then a partial match. If several
+recipes or items match, the tool returns an error listing the candidates with
+their ids rather than guessing. The read-only `get_recipe` returns the best
+match. `rate_recipe` takes a rating, a note, or both.
+There is deliberately no delete-recipe tool; deleting is a website action.
 
 ## Scripts
 
@@ -114,10 +130,15 @@ under 30 minutes that the kids like?", "Put sheet pan fajitas on Thursday",
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` (embedded DB migrates itself) |
 | `npm run db:studio` | Browse the database |
 
-## Deploying
+## Contributing and deploying
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deployment). Short version:
-Vercel + a Supabase Postgres, four environment variables, run
-`npm run db:migrate` once. There are no user accounts yet, so keep the
-deployment private until that lands (it's the first item under "Next" in the
-roadmap).
+`main` is the production branch: every push to it deploys to Vercel. Work on
+a branch and open a pull request into `main`. CI (GitHub Actions) runs
+typecheck, lint, smoke and build on every pull request, and the check must be
+green before the PR is merged.
+
+Hosting details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deployment).
+Short version: Vercel + a Supabase Postgres, four environment variables, run
+`npm run db:migrate` once. There are no user accounts, and a shared household
+passcode is the planned protection (pull request #4), so keep the deployment
+private until that lands.

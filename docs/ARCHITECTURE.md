@@ -8,7 +8,7 @@
 | Styling | Tailwind CSS 4 | Small, mobile-first pages without a component library to maintain. |
 | Database | Postgres via Drizzle ORM | Relational data (recipes ↔ ingredients ↔ plan ↔ list). Drizzle gives typed queries and SQL migrations. |
 | Local DB | PGlite (embedded Postgres, WASM) | `npm run dev` works with no services installed. Same SQL dialect as production, so no "works on SQLite but not Postgres" surprises. Data lives in `./data/pglite`. |
-| Hosted DB | Supabase Postgres (any Postgres works) | Set `DATABASE_URL`. Supabase also gives us Auth and Storage for the "Next" roadmap items. |
+| Hosted DB | Supabase Postgres (any Postgres works) | Set `DATABASE_URL`. Supabase also offers Auth and Storage if we need them later. |
 | AI | Anthropic SDK (`@anthropic-ai/sdk`), Claude Opus 5.5 | Vision + structured output for photo → recipe, and text extraction for URL imports without recipe data. Called server-side only. |
 | Assistant integration | MCP over Streamable HTTP (`mcp-handler` + `@modelcontextprotocol/server`) | One endpoint that Claude, ChatGPT and Gemini can all connect to. |
 
@@ -94,8 +94,8 @@ for the same reason.
 Tools are registered with zod input schemas, so each assistant sees typed,
 documented functions. Auth is a shared bearer token (`MCP_API_KEY`); the
 endpoint also advertises RFC 9728 protected-resource metadata, so moving to
-OAuth later is additive. Expect to add OAuth before sharing the URL beyond
-the household, since ChatGPT's connector UI prefers it.
+OAuth later is additive. OAuth is on the roadmap (docs/PRODUCT.md), since
+ChatGPT's and Claude's connector UIs prefer it.
 
 ## Photo → recipe
 
@@ -164,7 +164,23 @@ in `scripts/fixtures/import` and the URL guard, with no network.
   a link" against a running production server (needs Playwright on the module
   path; see the header comment for the env vars)
 
+GitHub Actions runs the same four checks, each as its own step, on every pull
+request and on every push to `main` (`.github/workflows/ci.yml`). The workflow
+sets no `DATABASE_URL` and no `ANTHROPIC_API_KEY`, so the build's migrate step
+is a no-op and everything runs against the embedded database. A new push to a
+PR cancels the run it supersedes.
+
 ## Deployment
+
+### Branches
+
+- `main` is the production branch. Vercel deploys every push to it.
+- Work happens on branches (`feature/...`, `chore/...`), never directly on
+  `main`.
+- Changes reach `main` through a pull request, and the pull request must have
+  a green CI check before it is merged.
+
+### Hosting
 
 1. Create a Supabase project (or any Postgres) and set `DATABASE_URL`.
 2. `npm run db:migrate` once per schema change (reads `drizzle/`).
@@ -172,5 +188,7 @@ in `scripts/fixtures/import` and the URL guard, with no network.
    and `HOUSEHOLD_TIMEZONE` set.
 4. Give the assistants `https://<your-domain>/api/mcp` and the bearer token.
 
-Until accounts exist, keep the deployment private (Vercel password protection
-or a private network) or accept that anyone with the URL can see the plan.
+There are no user accounts; a shared household passcode is the planned
+protection (pull request #4) and multi-family accounts wait. Until the
+passcode lands, keep the deployment private (Vercel password protection or a
+private network) or accept that anyone with the URL can see the plan.
