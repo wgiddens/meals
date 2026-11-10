@@ -100,27 +100,77 @@ async function main() {
 
   // Every exported Server Action starts with requireMember() (or
   // requireOwner()), in every "use server" file under src. Read from source
-  // because calling them needs a Next.js request.
+  // because calling them needs a Next.js request. The scan fails closed: an
+  // export it cannot check, or a "use server" anywhere but the top of a file,
+  // is a problem rather than something to skip.
+  const USE_SERVER = /["']use server["']/g;
+  /** Problems with a file's Server Actions; empty when every one is guarded. */
+  const scanServerActions = (source: string): { problems: string[]; actions: number } => {
+    // The directive must come first, after any comments and blank lines.
+    const body = source.replace(/^(?:\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*/, "");
+    const topLevel = /^["']use server["']\s*;?/.test(body);
+    const directives = source.match(USE_SERVER)?.length ?? 0;
+    const problems: string[] = [];
+    if (directives > (topLevel ? 1 : 0)) {
+      problems.push('"use server" appears other than as the first statement of the file');
+    }
+    if (!topLevel) return { problems, actions: 0 };
+    let actions = 0;
+    for (const match of source.matchAll(/\bexport\s+([^\n]*)/g)) {
+      const rest = match[1];
+      if (/^(type|interface)\s/.test(rest)) continue;
+      const fn = /^async\s+function\s+(\w+)\s*\(/.exec(rest);
+      if (!fn) {
+        problems.push(`export the scan cannot check: "export ${rest.trim().slice(0, 40)}"`);
+        continue;
+      }
+      const guarded = new RegExp(
+        `^async\\s+function\\s+${fn[1]}\\s*\\([^)]*\\)[^{]*\\{\\s*(const\\s+\\w+\\s*=\\s*)?await\\s+require(Member|Owner)\\(\\);`,
+      );
+      if (!guarded.test(source.slice(match.index + "export ".length).replace(/^\s+/, ""))) {
+        problems.push(`Server Action ${fn[1]} does not start with requireMember() or requireOwner()`);
+      }
+      actions++;
+    }
+    return { problems, actions };
+  };
+
+  // Each way round the scan that review found must now be a problem.
+  const guardedAction = 'export async function ok(formData: FormData) {\n  await requireMember();\n}\n';
+  const bypasses: [string, string][] = [
+    ["an exported arrow function", `"use server";\n${guardedAction}export const x = async () => {};\n`],
+    ["a comment before the directive", `// actions\n/* more */\n"use server";\nexport async function bad() {\n  return 1;\n}\n`],
+    ["export default", `"use server";\n${guardedAction}export default async function () {}\n`],
+    ["export { ... }", `"use server";\n${guardedAction}async function y() {}\nexport { y };\n`],
+    ["an inline directive in a page", `export default function Page() {\n  async function act() {\n    "use server";\n  }\n  return null;\n}\n`],
+    ["an unguarded action", `"use server";\nexport async function bad(formData: FormData) {\n  console.log(formData);\n  await requireMember();\n}\n`],
+  ];
+  for (const [label, fixture] of bypasses) {
+    assert(scanServerActions(fixture).problems.length > 0, `the action scan catches ${label}`);
+  }
+  const fine = scanServerActions(`/** Actions. */\n"use server";\nexport type T = 1;\n${guardedAction}`);
+  assert(fine.problems.length === 0 && fine.actions === 1, "the action scan accepts a guarded action after a comment");
+
   const sourceFiles = (dir: string): string[] =>
     fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const full = path.join(dir, e.name);
       if (e.isDirectory()) return sourceFiles(full);
-      return /\.(ts|tsx)$/.test(e.name) ? [full] : [];
+      return /\.(ts|tsx|js|jsx|mjs)$/.test(e.name) ? [full] : [];
     });
   let actionCount = 0;
+  const actionProblems: string[] = [];
   for (const file of sourceFiles(path.join(process.cwd(), "src"))) {
-    const source = fs.readFileSync(file, "utf8");
-    if (!/^\s*["']use server["']/.test(source)) continue;
-    const exported = [...source.matchAll(/export\s+async\s+function\s+(\w+)/g)].map((m) => m[1]);
-    assert(exported.length > 0, `${path.relative(process.cwd(), file)} exports Server Actions`);
-    for (const name of exported) {
-      const guarded = new RegExp(
-        `export\\s+async\\s+function\\s+${name}\\s*\\([^)]*\\)[^{]*\\{\\s*(const\\s+\\w+\\s*=\\s*)?await\\s+require(Member|Owner)\\(\\);`,
-      );
-      assert(guarded.test(source), `Server Action ${name} starts with requireMember() or requireOwner()`);
-      actionCount++;
-    }
+    const { problems, actions } = scanServerActions(fs.readFileSync(file, "utf8"));
+    const rel = path.relative(process.cwd(), file);
+    actionProblems.push(...problems.map((p) => `${rel}: ${p}`));
+    actionCount += actions;
   }
+  assert(
+    actionProblems.length === 0,
+    `every Server Action under src starts with requireMember() or requireOwner()${
+      actionProblems.length ? `:\n  ${actionProblems.join("\n  ")}` : ""
+    }`,
+  );
   assert(actionCount >= 9, `found the Server Actions to check (${actionCount})`);
 
   // The dev owner is created on first use, with the family row, and reused.
