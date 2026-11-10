@@ -110,10 +110,16 @@ from here.
 
 ## Roadmap
 
-### Already in the repo
+Each roadmap item is specified as a PRD in `.claude/prds/` and built as an
+epic in `.claude/epics/` (the CCPM flow). This document says what and in what
+order; the PRDs say exactly what "done" means.
 
-Built in the first scaffold, before this vision. It is the foundation the
-milestones below build on.
+### Already in the repo (prototype)
+
+Built in the first scaffold, before this vision. It is a prototype kept as
+reference, not a foundation: there is no real data and no real users, and the
+`core` PRD replaces it. Features listed here return only when their own PRD
+is built.
 
 - Recipe book with prep/cook time, complexity, family rating, tags,
   ingredients with quantities and store aisle, steps, notes, source.
@@ -131,8 +137,9 @@ milestones below build on.
   `add_grocery_item`, `check_grocery_item`, `remove_grocery_item`. Enough to
   run the plan from a chat: "what's for supper?", "we had it, it was a 4",
   "cross milk off the list". No delete-recipe tool on purpose.
-- Runs locally with zero setup (embedded Postgres); deploys to Vercel +
-  Supabase.
+- Runs locally with zero setup (embedded Postgres); deploys to Vercel with
+  its Neon Postgres integration. Hosting should stay free, or at least very
+  cheap.
 - Household passcode: one shared passcode (`HOUSEHOLD_PASSCODE`) gates the
   web app; each phone signs in once. Assistants keep their own MCP token.
 
@@ -141,6 +148,21 @@ milestones below build on.
 In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
+
+Foundation pieces come before the numbered items. Accounts, then core, are
+built first:
+
+- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
+  account in one invite-only family, with an owner who manages members.
+  Sign in with Google or a passkey. Replaces the shared household passcode.
+- **Email (`.claude/prds/email.md`), any time after accounts.** The app can
+  send email from our own domain: invitation emails and sign-in by email
+  link, so a Google account is no longer required. Nothing else waits on
+  it.
+- **Core (`.claude/prds/core.md`).** Replace the prototype with the
+  foundation everything else needs: the favourites list of dinners (name,
+  effort, ingredients), the allergy list as an absolute filter, and simple
+  phone pages to manage both.
 
 1. **Weekly draft (`suggest_week`).** A scheduled task drafts the week's
    dinners and saves the plan, ready by Saturday afternoon.
@@ -156,8 +178,8 @@ approved.
      week.
 2. **Approve on the phone.** Shannon and Will get a text with a link. The
    mobile page shows each dinner with Approve and Swap; swaps come from
-   favourites. Shannon's approval locks the plan. The shared household
-   passcode, already in place, protects the page for now.
+   favourites. Shannon's approval locks the plan. Personal accounts
+   protect the page and tell us who approved.
 3. **Cooking feedback loop.** After meals, quick Loved it / Never again
    ratings feed future plans so suggestions improve week over week.
    - Each cook is rated; the recipe's family rating is the average of those
@@ -191,7 +213,8 @@ approved.
 
 - Recipes and step-by-step cooking.
 - Nutrition tracking.
-- Multi-family accounts. A household passcode is enough until then.
+- Multiple families. One invite-only family with personal accounts is
+  enough until then.
 
 ## Open questions
 
