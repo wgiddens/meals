@@ -3,7 +3,7 @@ name: core
 description: Rebuild the app's foundation around a favourites list of dinners with an absolute allergy filter, and simple phone pages to manage it, behind family accounts
 status: backlog
 created: 2026-11-10T15:54:07Z
-updated: 2026-11-10T16:56:42Z
+updated: 2026-11-10T18:57:52Z
 ---
 
 # PRD: core
@@ -185,9 +185,8 @@ feature returns when its own PRD is built.
 - **Stack is fixed:** Next.js 16, Tailwind 4, Postgres through Drizzle, PGlite
   locally, Vercel hosting with Neon Postgres. Follow `AGENTS.md`: read the
   bundled Next.js docs before writing code.
-- **Docs to correct:** `README.md`, `.env.example`, `docs/ARCHITECTURE.md` and
-  a comment in `src/db/index.ts` name Supabase as the hosted database. The
-  deployment uses Vercel's Neon integration; the epic updates these.
+- **Hosting is Vercel's Neon integration.** Older docs named Supabase; the
+  `accounts` epic corrects them, so nothing is left to do here.
 - **Allergen matching is by text.** It cannot know that an ingredient with an
   innocent name contains an allergen (for example a bottled sauce). The family
   remains responsible for what they type in; label checking is out of scope.

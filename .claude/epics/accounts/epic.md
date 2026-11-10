@@ -2,7 +2,7 @@
 name: accounts
 status: backlog
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T18:51:40Z
+updated: 2026-11-10T18:57:52Z
 progress: 0%
 prd: .claude/prds/accounts.md
 github: (will be set on sync)
@@ -42,7 +42,8 @@ Better Auth creates a user row on first Google sign-in. A database hook
 that runs before user creation refuses the sign-in unless the verified
 email is the configured owner email or has a pending invitation. This is
 the single choke point, so no sign-in route can bypass it. Email and
-password sign-in is switched off.
+password sign-in is switched off. The owner email is accepted only while
+no owner exists, so there is always exactly one owner.
 
 ### Sessions live in the database, with no cookie cache
 Sessions are rows, 90 days long, renewed on use. The session is looked up
@@ -61,7 +62,8 @@ scale the extra query is negligible.
   these functions are the security boundary.
 
 ### One family, modelled minimally
-- Better Auth's `user` table gains a `role` column (`owner` | `member`).
+- Better Auth's `user` table gains a `role` column (`owner` | `member`), declared server-only so no
+  client request can set it.
 - A single-row `family` table holds the family name.
 - An `invitations` table holds name, email (stored lower-case, unique among
   pending), invited-by, created time and state (`pending`, `accepted`,
@@ -172,13 +174,15 @@ Risks:
 | 2 | Family rules: `family` and `invitations` tables, `role`, invite-only creation hook, owner bootstrap, `src/lib/family.ts` | 1 | no |
 | 3 | Member gate: `src/lib/member.ts`, new `proxy.ts` check, replace every `requireHousehold()`, dev owner, production fail-closed; delete the passcode code | 2 | no |
 | 4 | Sign-in page with Google, sign out, and the My account page (display name) | 3 | yes, with 6 and 7 |
-| 5 | Passkeys: plugin, add and remove on My account, passkey button on sign-in | 4 | yes, with 6 and 7 |
+| 5 | Passkeys: plugin, add and remove on My account, passkey button on sign-in; adds its assertion to the check script | 4, 7 | yes, with 6 |
 | 6 | Family page: members, invitations, owner controls | 3 | yes, with 4, 5 and 7 |
-| 7 | Automated checks: `scripts/check-accounts.ts` in `npm run smoke` | 3 | yes, with 4, 5 and 6 |
+| 7 | Automated checks: `scripts/check-accounts.ts` in `npm run smoke` | 3 | yes, with 4 and 6 |
 | 8 | Documentation and deployment: README, `.env.example`, `docs/ARCHITECTURE.md`, Google OAuth client and Vercel variables checklist, hand check on production | 4, 5, 6, 7 | no |
 
 Tasks 4 and 5 both edit the sign-in and account pages, so they run in
-sequence. Task 6 touches separate files and can run alongside them.
+sequence. Task 5 also waits for task 7, because it adds one assertion to
+the check script. Task 6 touches separate files and can run alongside all
+of them; task 3 adds both footer links so that 4 and 6 never share a file.
 
 ## Dependencies
 
@@ -201,10 +205,13 @@ sequence. Task 6 touches separate files and can run alongside them.
     session lookup fails;
   - `inviteMember`, `cancelInvitation`, `removeMember` and `renameFamily`
     refuse a non-owner;
-  - the owner cannot be removed;
+  - the owner cannot be removed, and a second owner can never be created;
+  - `role` cannot be changed through the sign-in library's client API;
   - the dev-owner shortcut is refused when `NODE_ENV` is `production`.
 - Every Server Action and every `/api/*` route except `/api/auth` and
   `/api/mcp` calls `requireMember()` or `requireOwner()`.
+- In production `/api/mcp` refuses every request when `MCP_API_KEY` is
+  unset.
 - `grep -ri "HOUSEHOLD_PASSCODE\|requireHousehold" .` finds nothing outside
   git history and `.claude/`.
 - On production: Will signs in with Google as owner, invites Shannon, she
@@ -217,7 +224,7 @@ sequence. Task 6 touches separate files and can run alongside them.
 
 Eight tasks. Sizes: tasks 1, 2 and 3 are medium; 4, 5 and 6 are small to
 medium; 7 and 8 are small. The critical path is 1 → 2 → 3 → 4 → 5 → 8;
-tasks 6 and 7 run beside 4 and 5. The one step that needs the repo owner is
+tasks 6 and 7 run beside 4. The one step that needs the repo owner is
 creating the Google OAuth client and setting the Vercel variables.
 
 ## Tasks Created

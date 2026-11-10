@@ -3,7 +3,7 @@ name: weekly-draft
 description: A scheduled job drafts the coming week's dinners from the favourites list, honouring the hard rules and nights off, with one new meal, and exposes the plan on a week page and over MCP
 status: backlog
 created: 2026-11-10T16:23:13Z
-updated: 2026-11-10T16:56:42Z
+updated: 2026-11-10T18:57:52Z
 ---
 
 # PRD: weekly-draft
@@ -98,8 +98,9 @@ week.
 Acceptance criteria:
 - On the week page, any night that hasn't passed can be turned into a night
   off in two taps, with an optional short note ("Supper with friends").
-- A night off can be turned back into a cooked night; the rules then fill
-  that night with an eligible meal.
+- A night off, including one that came from a weekday default, can be
+  turned back into a cooked night for that week; the rules then fill it
+  with an eligible meal, and it stays a cooked night through a redraft.
 - A night off set for a date before its week is drafted is kept when the
   draft runs.
 - These changes apply to that date only and never alter the weekday
@@ -158,8 +159,10 @@ Acceptance criteria:
   a redraft knows what to keep.
 
 ### Draft rules, in order
-1. Keep every night off already set by hand for the week.
-2. Apply weekday default nights off to the remaining nights.
+1. Keep every choice already made by hand for the week: nights turned off,
+   and nights turned back into cooked nights.
+2. Apply weekday default nights off to the nights with no hand-made
+   choice.
 3. Remove excluded meals (allergy) from the candidates.
 4. Place the new meal on a night that is neither busy nor off.
 5. Fill busy nights from `quick` and `pick-up` favourites, least recently
@@ -234,8 +237,10 @@ Added to the settings page from `core`:
 - With the eight starting favourites and two nights off, no meal repeats
   within 7 days and the least recently cooked are always chosen first.
 - Marking a night off for this week takes two taps and survives a redraft.
-- Each drafted week has exactly one new meal whenever an API key is set or
-  the to-try list is non-empty, and zero otherwise, never more.
+- No drafted week ever has more than one new meal. A week has exactly one
+  when a to-try meal or a valid AI proposal is available and at least one
+  night is neither busy nor off; otherwise it has none and the draft still
+  completes.
 - An assistant connected over MCP can answer "what's for supper?" and can
   redraft the week.
 - Monthly running cost is under $1.

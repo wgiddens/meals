@@ -3,7 +3,7 @@ name: accounts
 description: Personal accounts for one family, invite only, with Google and passkey sign-in and an owner who manages members; replaces the shared household passcode
 status: backlog
 created: 2026-11-10T16:56:42Z
-updated: 2026-11-10T18:07:42Z
+updated: 2026-11-10T18:57:52Z
 ---
 
 # PRD: accounts
@@ -47,6 +47,8 @@ Acceptance criteria:
   successful Google sign-in with that email creates the family and makes
   that account the owner.
 - Until then, no one else can sign in.
+- Once an owner exists, the configured owner email grants nothing further:
+  there is always exactly one owner.
 - No one can create an account or a family by any other route.
 
 ### 2. Sign in with Google
@@ -111,6 +113,8 @@ Acceptance criteria:
   back to where they were going.
 - Every server write checks for a signed-in member itself rather than
   relying on the redirect.
+- The assistant (MCP) endpoint, which keeps its own token, refuses every
+  request in production when that token is not set.
 - Server code can ask "who is signed in?" and get the member's id, name and
   role, for later PRDs to use.
 
@@ -211,8 +215,8 @@ Acceptance criteria:
   Google and passkeys already give.
 - Child or view-only accounts, and any per-role limits on meals, allergies
   or plans.
-- Transferring ownership to another member; done by changing the owner
-  email in configuration if ever needed.
+- Transferring ownership to another member. If ever needed it is a manual
+  database change, not a setting.
 - Phone numbers and notification preferences (`phone-approval`).
 - Assistant sign-in. MCP keeps its bearer token until `mcp-oauth`, which
   can then sign assistants in as a member.
