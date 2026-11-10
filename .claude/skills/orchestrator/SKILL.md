@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: "Run the project as orchestrator and project manager for Will, the stakeholder: take each ready ccpm task through a separate implementation chat, a separate review chat, Will's approval and the merge, then start the next task. Use when Will asks you to orchestrate, run, drive or keep an epic on track, or to 'take it from here' on ccpm work, and on scheduled orchestrator check-ins. Builds on the ccpm skill: ccpm defines the files, scripts and GitHub conventions; this skill defines who does what and when. Do NOT use for a one-off standup or status question (use ccpm) or for doing a task's implementation yourself."
+description: "Run the project as orchestrator and project manager for Will, the stakeholder: take each ready ccpm task through a separate implementation chat, a separate review chat, Will's merge, then start the next task. Use when Will asks you to orchestrate, run, drive or keep an epic on track, or to 'take it from here' on ccpm work, and on scheduled orchestrator check-ins. Builds on the ccpm skill: ccpm defines the files, scripts and GitHub conventions; this skill defines who does what and when. Do NOT use for a one-off standup or status question (use ccpm) or for doing a task's implementation yourself."
 ---
 
 # Orchestrator
@@ -262,7 +262,7 @@ Add one line per lesson: date, what happened, and the rule it changed.
 - 2026-11-10: #9 was built without an analysis file and merged without
   review. Rule: step 2 is mandatory, and no PR goes to Will without a review.
 - 2026-11-10: Will chose a PR per task into the epic branch plus a final
-  epic PR, with Will approving and the orchestrator merging.
+  epic PR, with Will approving and the orchestrator merging (superseded below).
 - 2026-11-10: Will asked for reviews to run in a separate chat, not a
   subagent.
 - 2026-11-10: Will decided each task adds its own Drizzle migration, and an
