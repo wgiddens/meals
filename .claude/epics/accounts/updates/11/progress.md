@@ -2,7 +2,7 @@
 issue: 11
 started: 2026-11-10T20:59:18Z
 last_sync: 2026-11-10T21:16:00Z
-completion: 95%
+completion: 100%
 ---
 
 # Issue #11: Member gate: replace the household passcode

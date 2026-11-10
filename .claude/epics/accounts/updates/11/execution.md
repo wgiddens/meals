@@ -1,13 +1,13 @@
 ## Active Streams
-- Stream A-D (sequential, one implementation chat): started 2026-11-10T20:59:48Z
-  - Implementation chat: session_01DNZtwxuGnk6g8nNZG7wQHL
-  - Branch: claude/issue-11-member-gate
-  - PR: #21, opened 2026-11-10T21:15Z; marked ready 2026-11-10T21:38Z at fa55c36 (review approved after 2 re-checks, CI green); waiting for the stakeholder to merge
-  - Review chat: session_01DNZtwwr6XcUHUWz9MubQZ8 (started 2026-11-10T21:16Z)
-  - Pending check-in: none
+(none)
 
 ## Queued
 (none)
 
 ## Completed
-(none yet)
+- Stream A-D (sequential, one implementation chat): 2026-11-10T20:59:48Z to 2026-11-10T21:40:32Z
+  - Implementation chat: session_01DNZtwxuGnk6g8nNZG7wQHL (archived)
+  - Branch: claude/issue-11-member-gate
+  - PR: #21, merged by the stakeholder at 2026-11-10T21:40Z (head fa55c36)
+  - Review chat: session_01DNZtwwr6XcUHUWz9MubQZ8 (archived). First review: 1 should-fix, 3 minor (2 settled by the stakeholder); re-check 1 minor; final re-check 0 findings
+  - Check-ins: none pending
