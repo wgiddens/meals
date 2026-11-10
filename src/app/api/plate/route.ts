@@ -4,6 +4,7 @@ import {
   SUPPORTED_IMAGE_TYPES,
   type SupportedImageType,
 } from "@/lib/ai/plate";
+import { NotSignedInError, requireMember } from "@/lib/member";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -12,6 +13,16 @@ const MAX_BYTES = 8 * 1024 * 1024;
  * Returns a recipe draft as JSON. The recipe form on /recipes/new uses this.
  */
 export async function POST(req: Request) {
+  // proxy.ts already answers 401 without a session cookie; this is the real check.
+  try {
+    await requireMember();
+  } catch (err) {
+    if (err instanceof NotSignedInError) {
+      return Response.json({ error: err.message }, { status: 401 });
+    }
+    throw err;
+  }
+
   let form: FormData;
   try {
     form = await req.formData();

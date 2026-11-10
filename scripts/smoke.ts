@@ -2,7 +2,8 @@
  * End-to-end check of the data layer against a throwaway embedded database:
  * create recipes, plan a week, mark a supper cooked, rate and patch a recipe,
  * build a grocery list, add a manual item, check off and remove items by name,
- * rebuild and make sure checked state survives.
+ * rebuild and make sure checked state survives. Also the sign-in gate's pure
+ * decisions (gateMode, devOwnerAllowed, safeReturnPath) and the dev owner.
  *   npm run smoke
  */
 import fs from "node:fs";
@@ -40,15 +41,16 @@ async function main() {
     console.log(`ok - ${msg}`);
   };
 
-  // The /login return path must never point off-site.
-  const { safeReturnPath } = await import("@/lib/household");
+  // The sign-in return path must never point off-site, or back to sign-in.
+  const { safeReturnPath, gateMode, devOwnerAllowed } = await import("@/lib/gate");
   for (const bad of [
     "//evil.example",
     "/\\evil.example",
     "/%5Cevil.example",
     "https://evil.example",
     "/plan\u0000",
-    "/login?next=%2Fplan",
+    "/sign-in?next=%2Fplan",
+    "/sign-in/",
     "",
     undefined,
   ]) {
@@ -56,6 +58,61 @@ async function main() {
   }
   assert(safeReturnPath("/plan?x=1") === "/plan?x=1", "return path /plan?x=1 is allowed");
   assert(safeReturnPath("/recipes/abc") === "/recipes/abc", "return path /recipes/abc is allowed");
+
+  // Who is let in, decided from the environment alone. Production is checked
+  // first: no sign-in configuration can make it reach the dev owner.
+  const google = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" };
+  const gateCases: [Record<string, string | undefined>, string][] = [
+    [{ NODE_ENV: "development" }, "dev-owner"],
+    [{}, "dev-owner"],
+    [{ NODE_ENV: "test", GOOGLE_CLIENT_ID: "id" }, "dev-owner"],
+    [{ NODE_ENV: "development", GOOGLE_CLIENT_ID: " ", GOOGLE_CLIENT_SECRET: "secret" }, "dev-owner"],
+    [{ NODE_ENV: "development", ...google }, "sign-in"],
+    [{ NODE_ENV: "production" }, "closed"],
+    [{ NODE_ENV: "production", BETTER_AUTH_SECRET: "s" }, "closed"],
+    [{ NODE_ENV: "production", ...google }, "closed"],
+    [{ NODE_ENV: "production", ...google, BETTER_AUTH_SECRET: " " }, "closed"],
+    [{ NODE_ENV: "production", ...google, BETTER_AUTH_SECRET: "s" }, "sign-in"],
+  ];
+  for (const [env, expected] of gateCases) {
+    assert(gateMode(env) === expected, `gateMode(${JSON.stringify(env)}) is ${expected}`);
+    assert(
+      devOwnerAllowed(env) === (expected === "dev-owner"),
+      `devOwnerAllowed(${JSON.stringify(env)}) is ${expected === "dev-owner"}`,
+    );
+  }
+
+  // The dev owner is created on first use, with the family row, and reused.
+  const { ensureDevOwner, DEV_OWNER } = await import("@/lib/member");
+  const { listFamily } = await import("@/lib/family");
+  const devOwner = await ensureDevOwner();
+  assert(
+    devOwner.id === DEV_OWNER.id && devOwner.role === "owner" && devOwner.email === DEV_OWNER.email,
+    "the dev owner is created on first use with role owner",
+  );
+  const familyAfterDevOwner = await listFamily();
+  assert(
+    familyAfterDevOwner.members.length === 1 && familyAfterDevOwner.members[0].id === DEV_OWNER.id,
+    "the dev owner is the family's only member",
+  );
+  const [againA, againB] = await Promise.all([ensureDevOwner(), ensureDevOwner()]);
+  assert(
+    againA.id === DEV_OWNER.id && againB.id === DEV_OWNER.id && (await listFamily()).members.length === 1,
+    "later calls, even at once, reuse the same dev owner",
+  );
+  // An owner who signed in for real (while Google was configured) is used as is.
+  const { getDb, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const smokeDb = await getDb();
+  await smokeDb.delete(schema.user).where(eq(schema.user.id, DEV_OWNER.id));
+  await smokeDb
+    .insert(schema.user)
+    .values({ id: "real-owner", name: "Real", email: "real@example.com", emailVerified: true, role: "owner" });
+  const reused = await ensureDevOwner();
+  assert(
+    reused.id === "real-owner" && (await listFamily()).members.length === 1,
+    "with an owner already present, the dev shortcut uses that owner and creates no other",
+  );
 
   const tacos = await createRecipe({
     title: "Smoke Tacos",

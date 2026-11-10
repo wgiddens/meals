@@ -671,18 +671,23 @@ const handler = createMcpHandler(
 
 /**
  * Bearer-token auth. Set MCP_API_KEY in the environment and give that value
- * to each assistant as its bearer token. If it isn't set the endpoint is open,
- * which is only acceptable on localhost.
+ * to each assistant as its bearer token. If it isn't set, the endpoint is open
+ * outside production (local development needs no setup) and refuses every
+ * request in production, so assistants cannot get round the account sign-in.
+ * Both are read per request, and `required` makes every refusal a 401.
  */
 const authed = withMcpAuth(
   handler,
   (_req, token) => {
     const expected = process.env.MCP_API_KEY;
-    if (!expected) return { token: "anonymous", clientId: "local", scopes: ["household"] };
+    if (!expected) {
+      if (process.env.NODE_ENV === "production") return undefined;
+      return { token: "anonymous", clientId: "local", scopes: ["household"] };
+    }
     if (!token || !constantTimeEqual(token, expected)) return undefined;
     return { token, clientId: "household", scopes: ["household"] };
   },
-  { required: Boolean(process.env.MCP_API_KEY) },
+  { required: true },
 );
 
 function constantTimeEqual(a: string, b: string): boolean {

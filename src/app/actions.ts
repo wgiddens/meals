@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { ingredientCategories } from "@/db/schema";
 import { isIsoDate } from "@/lib/dates";
-import { requireHousehold } from "@/lib/household";
+import { requireMember } from "@/lib/member";
 import {
   addManualItem,
   buildListFromPlan,
@@ -23,9 +23,9 @@ import {
 
 /**
  * Server Actions. These are the only way the UI writes to the database.
- * Each one starts with requireHousehold(): proxy.ts gates page requests, but
- * actions are plain POSTs and must check the household session themselves.
- * Real per-person accounts are on the roadmap; see docs/ARCHITECTURE.md.
+ * Each one starts with requireMember(): proxy.ts turns away requests with no
+ * session cookie, but actions are plain POSTs and must check for a signed-in
+ * member themselves.
  */
 
 export type ActionState = { error?: string; fieldErrors?: Record<string, string> } | null;
@@ -39,7 +39,7 @@ export async function saveRecipeAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  await requireHousehold();
+  await requireMember();
   let input: RecipeInput;
   try {
     input = JSON.parse(String(formData.get("payload") ?? "{}"));
@@ -63,7 +63,7 @@ export async function saveRecipeAction(
 }
 
 export async function deleteRecipeAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const id = String(formData.get("id") ?? "");
   if (!z.string().uuid().safeParse(id).success) return;
   await deleteRecipe(id);
@@ -72,7 +72,7 @@ export async function deleteRecipeAction(formData: FormData) {
 }
 
 export async function setMealAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const date = String(formData.get("date") ?? "");
   if (!isIsoDate(date)) return;
   const recipeId = String(formData.get("recipeId") ?? "");
@@ -86,7 +86,7 @@ export async function setMealAction(formData: FormData) {
 }
 
 export async function clearMealAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const date = String(formData.get("date") ?? "");
   if (!isIsoDate(date)) return;
   await setMeal({ date, recipeId: null, note: null });
@@ -94,7 +94,7 @@ export async function clearMealAction(formData: FormData) {
 }
 
 export async function toggleCookedAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const date = String(formData.get("date") ?? "");
   if (!isIsoDate(date)) return;
   await markCooked(date, formData.get("cooked") === "true");
@@ -102,7 +102,7 @@ export async function toggleCookedAction(formData: FormData) {
 }
 
 export async function buildGroceryListAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const start = String(formData.get("start") ?? "");
   const end = String(formData.get("end") ?? "");
   await buildListFromPlan(
@@ -113,7 +113,7 @@ export async function buildGroceryListAction(formData: FormData) {
 }
 
 export async function toggleGroceryItemAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const id = String(formData.get("id") ?? "");
   if (!z.string().uuid().safeParse(id).success) return;
   await setItemChecked(id, formData.get("checked") === "true");
@@ -121,7 +121,7 @@ export async function toggleGroceryItemAction(formData: FormData) {
 }
 
 export async function removeGroceryItemAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const id = String(formData.get("id") ?? "");
   if (!z.string().uuid().safeParse(id).success) return;
   await removeItem(id);
@@ -129,7 +129,7 @@ export async function removeGroceryItemAction(formData: FormData) {
 }
 
 export async function addGroceryItemAction(formData: FormData) {
-  await requireHousehold();
+  await requireMember();
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return;
   const qty = Number(formData.get("quantity"));
