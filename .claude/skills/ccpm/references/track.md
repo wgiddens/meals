@@ -8,7 +8,7 @@ Tracking operations use bash scripts directly for speed and consistency. The LLM
 
 All tracking operations have a corresponding bash script. Run the script; do not reconstruct the output manually.
 
-Scripts live in `references/scripts/` relative to this skill, but need to run from the **project root** (where `.claude/` lives). Run them as:
+Scripts live in `references/scripts/` relative to this skill, but need to run from the root of a checkout that has the epic files. **In this repo that is the epic worktree `../epic-<name>/`, not the primary clone on `main`**, which has no `.claude/epics/`. Set the worktree up first (`conventions.md`, "Git / Worktree Conventions"), then run them as:
 
 ```bash
 bash <skill_path>/references/scripts/<script>.sh [args]

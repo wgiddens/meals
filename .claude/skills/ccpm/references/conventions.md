@@ -140,6 +140,24 @@ grep 'github:' <file> | grep -oE '[0-9]+$'
   git checkout main && git pull origin main
   git worktree add ../epic-<name> -b epic/<name>
   ```
+- **The epic's files live on `epic/<name>`.** Once an epic branch exists,
+  its `.claude/epics/<name>/` files are updated there, not on `main`, and
+  reach `main` only through the final epic PR. Read state and run tracking
+  scripts from the worktree root. In a session that doesn't have the worktree
+  yet (every fresh cloud session):
+  ```bash
+  # Works in single-branch cloud clones too (no upstream tracking needed).
+  git fetch origin epic/<name>:refs/remotes/origin/epic/<name>
+  if [ ! -d ../epic-<name> ]; then
+    git worktree add -B epic/<name> ../epic-<name> origin/epic/<name>
+  else
+    git -C ../epic-<name> merge --ff-only origin/epic/<name>
+  fi
+  cd ../epic-<name> && bash .claude/skills/ccpm/references/scripts/next.sh
+  ```
+- In this repo, starting tasks, closing them and merging epics follow the
+  orchestrator skill (`.claude/skills/orchestrator/SKILL.md`), which adds a
+  PR per task and a final epic PR instead of committing and merging directly.
 - Commit format inside epics: `Issue #<N>: <description>`
 - Never use `--force` in any git operation
 - Optional database branch, after the worktree exists: `bash references/scripts/neon-branch.sh create <name>`. On merge: `bash references/scripts/neon-branch.sh cleanup <name>`. Exits 0 with a message when the Neon CLI or `NEON_PROJECT_ID` is missing. Never commit the env file it writes.
