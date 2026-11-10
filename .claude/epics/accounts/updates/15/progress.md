@@ -34,6 +34,25 @@ Stream A in `15-analysis.md` is implemented on
 - typecheck, lint, smoke, check:accounts and `env -u DATABASE_URL` build
   pass again.
 
+## Review fixes (review of PR #23, 4 minor findings)
+1. Section 5 now also passes an actor object that claims role `owner`
+   (`{ ...shannon, role: "owner" }`) to all four actions; each is refused
+   (5.7). Checked: a `requireOwnerActor` that trusts `actor.role` fails 5.7,
+   while the previous script passed it.
+2. With `CHECK_ACCOUNTS_DATABASE_URL`, the empty-database guard now runs
+   before migrating (users, invitations, family, the audit table), and the
+   checks run in try/finally that drops the trigger, function and audit table
+   and deletes the run's rows. Reproduced first: a failed run left 3 users
+   plus the trigger and table, and the next run failed the guard. After the
+   fix, a failed run leaves the database empty and the next two runs pass.
+   A database with a planted user is refused before migrating and left
+   untouched.
+3. 8.8 compares the audit count before and after the takeover attempt
+   instead of expecting 1.
+4. The PR body no longer says only two files change.
+- `check:accounts` now runs 62 assertions; typecheck, lint, smoke,
+  check:accounts and `env -u DATABASE_URL` build pass.
+
 ## Not changed
 - `scripts/check-auth.ts` keeps its overlapping family-rule assertions;
   see the PR's "Decisions and open questions".
