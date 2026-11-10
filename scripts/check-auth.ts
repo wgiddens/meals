@@ -172,6 +172,20 @@ async function main() {
       (err: unknown) => errorCode(err),
     );
 
+  // With OWNER_EMAIL unset (Will's decision: it closes only the owner route),
+  // nobody can sign up before there is an owner, not even the address that
+  // will later be the owner.
+  delete process.env.OWNER_EMAIL;
+  const noOwnerEmailRefusal = await refusal(createUser("Owner", OWNER_EMAIL));
+  assert(
+    family.ownerEmail() === null &&
+      !(await family.canSignUp(OWNER_EMAIL, db)) &&
+      noOwnerEmailRefusal === "NOT_INVITED" &&
+      (await userCount(OWNER_EMAIL)) === 0,
+    `with OWNER_EMAIL unset and no owner, canSignUp is false and Google sign-up is refused with no row (got ${noOwnerEmailRefusal})`,
+  );
+  process.env.OWNER_EMAIL = OWNER_EMAIL;
+
   const stranger = `stranger-${RUN}@example.com`;
   assert(!(await family.canSignUp(stranger, db)), "canSignUp is false for an email that is neither owner nor invited");
   const strangerRefusal = await refusal(createUser("Stranger", stranger));
@@ -231,10 +245,21 @@ async function main() {
     );
   assert(directSecondOwner === "refused", "the database itself refuses a second owner row");
 
-  const savedOwnerEmail = process.env.OWNER_EMAIL;
+  // Once there is an owner, OWNER_EMAIL can be unset and invitations still work.
   delete process.env.OWNER_EMAIL;
-  assert(family.ownerEmail() === null, "with OWNER_EMAIL unset there is no owner email");
-  process.env.OWNER_EMAIL = savedOwnerEmail;
+  const unsetEmail = `unset-owner-email-${RUN}@example.com`;
+  await family.inviteMember(owner, { name: "Unset", email: unsetEmail }, db);
+  const unsetMember = await createUser("Unset (Google)", unsetEmail).then(
+    (u) => u,
+    (err: unknown) => errorCode(err),
+  );
+  const unsetOutcome = typeof unsetMember === "string" ? unsetMember : unsetMember.role;
+  assert(
+    unsetOutcome === "member",
+    `with OWNER_EMAIL unset after the owner exists, an invitation still lets someone sign up (got ${unsetOutcome})`,
+  );
+  if (typeof unsetMember !== "string") await family.removeMember(owner, unsetMember.id, db);
+  process.env.OWNER_EMAIL = OWNER_EMAIL;
 
   // ---- Invitations -----------------------------------------------------------
   const memberEmail = `member-${RUN}@example.com`;

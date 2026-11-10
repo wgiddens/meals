@@ -46,7 +46,7 @@ Streams A-D from `10-analysis.md`, done in order by one implementer.
   - See `progress.md`.
 
 ## Verified
-- `check:auth` (72 assertions on PGlite, 73 on Postgres) passes on PGlite, and twice in a row against
+- `check:auth` (73 assertions on PGlite, 74 on Postgres) passes on PGlite, and twice in a row against
   a local Postgres 16 through postgres-js (`CHECK_AUTH_DATABASE_URL`). The
   run cleans up its own rows.
 - Mutation checks: removing `input: false`, the verified-email check, the

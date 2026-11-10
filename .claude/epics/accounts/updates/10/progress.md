@@ -35,9 +35,13 @@ Review of PR #20 found three issues; all are fixed on the same branch.
   user (the linked account cascades) and the hook throws `NOT_INVITED`
   before a session is created. The check simulates the cancel while the
   Google account is being linked.
+- **OWNER_EMAIL decision is now proven by the checks.** With `OWNER_EMAIL`
+  unset and no owner, `canSignUp` is false and Google sign-up is refused
+  with `NOT_INVITED` and no row. With it unset after the owner exists, an
+  invitation still works.
 - Each fix was confirmed by reverting it and seeing a check fail.
-  `check:auth` passes on PGlite (72 checks) and on a local Postgres 16
-  (73 checks).
+  `check:auth` passes on PGlite (73 checks) and on a local Postgres 16
+  (74 checks).
 
 ## Notes for later tasks
 - #11 (dev owner): the before-create hook refuses every email that is not
