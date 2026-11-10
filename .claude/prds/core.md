@@ -1,8 +1,9 @@
 ---
 name: core
-description: Rebuild the app's foundation around a favourites list of dinners with an absolute allergy filter, simple phone pages to manage it, and the household passcode
+description: Rebuild the app's foundation around a favourites list of dinners with an absolute allergy filter, and simple phone pages to manage it, behind family accounts
 status: backlog
 created: 2026-11-10T15:54:07Z
+updated: 2026-11-10T16:56:42Z
 ---
 
 # PRD: core
@@ -13,8 +14,8 @@ The code in the repo today is a prototype. It was built before the product
 vision in `docs/PRODUCT.md` and is centred on a recipe book, which the vision
 lists under "Not now". This PRD replaces it, in place, with the smallest
 foundation every roadmap item needs: a **favourites list of dinners**, a
-**household allergy list that is an absolute filter**, **simple phone pages**
-to manage both, and the existing **household passcode** in front of them.
+**household allergy list that is an absolute filter**, and **simple phone
+pages** to manage both, all behind the sign-in from the `accounts` PRD.
 
 Nothing here plans a week. Week plans, cook history and assistant (MCP) access
 are specified in the `weekly-draft` PRD, which builds directly on this one.
@@ -99,9 +100,10 @@ Acceptance criteria:
 As the family, only we can see or change the list.
 
 Acceptance criteria:
-- With `HOUSEHOLD_PASSCODE` set, every page and every write requires a signed-
-  in device; each phone enters the passcode once.
-- With it unset, local development works with no sign-in.
+- Every page and every write in this PRD requires a signed-in family
+  member, using the sign-in check provided by `accounts`.
+- Owner and member can do everything in this PRD equally.
+- Local development works with no sign-in setup, as `accounts` provides.
 
 ## Functional Requirements
 
@@ -127,8 +129,9 @@ Acceptance criteria:
 ### Pages
 - Home: the favourites list (story 1), with a way to add a meal.
 - Add / edit meal: one form (stories 2 and 3).
-- Settings: the allergy list (story 4) and sign out.
-- Login: the existing passcode page.
+- Settings: the allergy list (story 4), with links to the family and
+  account pages from `accounts`.
+- Sign-in, family and account pages come from `accounts` and are kept.
 
 ### Prototype removal
 Removed from the app in this PRD. The code stays in git history and each
@@ -145,7 +148,7 @@ feature returns when its own PRD is built.
 - The database schema is replaced with a new one. Prototype tables are
   dropped; no prototype data is migrated.
 - Pieces that still fit may be carried over rather than rewritten: the
-  passcode gate, the date helpers, the local/hosted database switch, the CI
+  accounts work, the date helpers, the local/hosted database switch, the CI
   workflow.
 
 ## Non-Functional Requirements
@@ -188,8 +191,8 @@ feature returns when its own PRD is built.
 - **Allergen matching is by text.** It cannot know that an ingredient with an
   innocent name contains an allergen (for example a bottled sauce). The family
   remains responsible for what they type in; label checking is out of scope.
-- **Single household.** One allergy list and one meals list for the whole
-  deployment; no household or user ids in the schema.
+- **Single family.** One allergy list and one meals list for the whole
+  deployment; meals and allergens carry no family or member id.
 - **Vercel and Neon free tiers** are assumed to stay sufficient for one
   household. If either changes, cost is revisited before adding a paid plan.
 - The eight starting favourites need ingredient lists written as part of the
@@ -206,7 +209,7 @@ feature returns when its own PRD is built.
   `walmart-pickup`).
 - The "try these?" stack, photo capture and link import (`find-new-meals`).
 - Recipe steps, cook times, servings, nutrition.
-- Multiple families, user accounts, per-person sign-in.
+- Accounts, sign-in and family membership (`accounts`); multiple families.
 - Growing the list from 8 to 15–20 favourites: that is done by the family
   using these pages, not by this build.
 
@@ -215,5 +218,5 @@ feature returns when its own PRD is built.
 - `docs/PRODUCT.md` – hard rules, starting favourites and roadmap order. It
   wins where this PRD disagrees.
 - The existing Vercel project and its Neon database (`DATABASE_URL`).
-- `HOUSEHOLD_PASSCODE` set on the deployment.
-- Nothing upstream: this is the first PRD. `weekly-draft` depends on it.
+- **`accounts` PRD, complete:** sign-in, the signed-in-member check, and
+  the family and account pages. `weekly-draft` depends on this PRD in turn.

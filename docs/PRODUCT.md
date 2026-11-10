@@ -149,10 +149,17 @@ In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
 
-0. **Core (`.claude/prds/core.md`).** Replace the prototype with the
-   foundation everything else needs: the favourites list of dinners (name,
-   effort, ingredients), the allergy list as an absolute filter, simple phone
-   pages to manage both, and the household passcode.
+Two foundation pieces come before the numbered items, in this order:
+
+- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
+  account in one invite-only family, with an owner who manages members.
+  Sign in with Google, an email link or a passkey. Replaces the shared
+  household passcode.
+- **Core (`.claude/prds/core.md`).** Replace the prototype with the
+  foundation everything else needs: the favourites list of dinners (name,
+  effort, ingredients), the allergy list as an absolute filter, and simple
+  phone pages to manage both.
+
 1. **Weekly draft (`suggest_week`).** A scheduled task drafts the week's
    dinners and saves the plan, ready by Saturday afternoon.
    - Seed the favourites list first: the eight starting favourites, growing
@@ -167,8 +174,8 @@ approved.
      week.
 2. **Approve on the phone.** Shannon and Will get a text with a link. The
    mobile page shows each dinner with Approve and Swap; swaps come from
-   favourites. Shannon's approval locks the plan. The shared household
-   passcode, already in place, protects the page for now.
+   favourites. Shannon's approval locks the plan. Personal accounts
+   protect the page and tell us who approved.
 3. **Cooking feedback loop.** After meals, quick Loved it / Never again
    ratings feed future plans so suggestions improve week over week.
    - Each cook is rated; the recipe's family rating is the average of those
@@ -202,7 +209,8 @@ approved.
 
 - Recipes and step-by-step cooking.
 - Nutrition tracking.
-- Multi-family accounts. A household passcode is enough until then.
+- Multiple families. One invite-only family with personal accounts is
+  enough until then.
 
 ## Open questions
 

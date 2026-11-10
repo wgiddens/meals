@@ -3,6 +3,7 @@ name: weekly-draft
 description: A scheduled job drafts the coming week's dinners from the favourites list, honouring the hard rules and nights off, with one new meal, and exposes the plan on a week page and over MCP
 status: backlog
 created: 2026-11-10T16:23:13Z
+updated: 2026-11-10T16:56:42Z
 ---
 
 # PRD: weekly-draft
@@ -126,8 +127,8 @@ Acceptance criteria:
   each date with its meal name and effort tag, or its night off label and
   note.
 - Tonight's entry is visually distinct.
-- The page works one-handed at 375 px width and sits behind the household
-  passcode.
+- The page works one-handed at 375 px width and sits behind family
+  sign-in.
 
 ### 8. Ask an assistant
 As Shannon or Will, I ask Claude, ChatGPT or Gemini about the plan or tell
@@ -218,7 +219,7 @@ Added to the settings page from `core`:
 - **Zero-setup local development:** `npm run dev` still works with no
   services and no keys; a draft can be triggered locally by button or
   script.
-- **Security:** pages behind the household passcode; MCP behind its bearer
+- **Security:** pages behind family sign-in (`accounts`); MCP behind its bearer
   token; the scheduled endpoint behind Vercel's cron secret.
 - **Quality gates:** typecheck, lint, smoke check and build green in CI.
 
@@ -283,7 +284,8 @@ Added to the settings page from `core`:
 
 - **`core` PRD, complete:** the meals list with effort tags and ingredients,
   the allergy list and its shared allow/exclude function, the settings
-  page, the passcode gate.
+  page.
+- **`accounts` PRD, complete:** sign-in and the signed-in-member check.
 - `docs/PRODUCT.md` – hard rules and roadmap order; it wins on conflict.
 - Vercel scheduled jobs on the free plan, with a cron secret.
 - `ANTHROPIC_API_KEY` on the deployment (optional; without it, no new meal).
