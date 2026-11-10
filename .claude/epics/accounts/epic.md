@@ -1,8 +1,8 @@
 ---
 name: accounts
-status: backlog
+status: in-progress
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T19:03:42Z
+updated: 2026-11-10T19:19:03Z
 progress: 0%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
