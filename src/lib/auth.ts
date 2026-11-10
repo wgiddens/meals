@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
+import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
 import { getDb, schema, type Db } from "@/db";
 import { userRoles, type Role } from "@/db/schema";
 import { completeSignUp, signUpRole } from "@/lib/family";
@@ -38,11 +39,98 @@ export function googleConfig(): { clientId: string; clientSecret: string } | nul
   return clientId && clientSecret ? { clientId, clientSecret } : null;
 }
 
+type Env = Readonly<Record<string, string | undefined>>;
+
+/** The origin of a configured URL, or null when it is unset or not http(s). */
+function originOf(value: string | undefined): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The fixed address Google sends every sign-in back to when sign-in runs
+ * through the OAuth proxy (OAUTH_PROXY_URL), as an origin. Null when unset,
+ * which turns the proxy off: every deployment then talks to Google directly.
+ */
+export function oauthProxyOrigin(env: Env = process.env): string | null {
+  return originOf(env.OAUTH_PROXY_URL);
+}
+
+/**
+ * The origins Better Auth trusts besides its own BETTER_AUTH_URL (which it
+ * always trusts): where sign-in may send people back to, and which pages may
+ * call its endpoints. Kept to this project's own addresses, never a pattern
+ * such as `*.vercel.app` that anyone's deployment could match:
+ *
+ *   - outside production, localhost and 127.0.0.1 on any port;
+ *   - on a Vercel preview, that deployment's own two addresses (VERCEL_URL,
+ *     the per-deployment one, and VERCEL_BRANCH_URL, the per-branch one),
+ *     which Vercel sets and a request cannot change;
+ *   - the OAuth proxy's fixed address, which is ours too.
+ *
+ * This is what keeps the OAuth proxy from being an open redirect. The proxy
+ * deployment sends people on to the address sealed in the sign-in's state,
+ * and only a deployment holding the shared secret can seal one. That
+ * deployment first checks the address against this list, so the return trip
+ * can only ever lead back to the deployment where sign-in started.
+ */
+export function trustedOrigins(env: Env = process.env): string[] {
+  const origins = new Set<string>();
+  if (env.NODE_ENV !== "production") {
+    origins.add("http://localhost:*");
+    origins.add("http://127.0.0.1:*");
+  }
+  if (env.VERCEL_ENV === "preview") {
+    for (const host of [env.VERCEL_URL, env.VERCEL_BRANCH_URL]) {
+      const origin = originOf(host);
+      if (origin?.startsWith("https://")) origins.add(origin);
+    }
+  }
+  const proxy = oauthProxyOrigin(env);
+  if (proxy) origins.add(proxy);
+  return [...origins];
+}
+
+/**
+ * Google sign-in on Vercel previews. Google only redirects to addresses
+ * registered on the OAuth client, and every preview has a new one, so with
+ * OAUTH_PROXY_URL set, Better Auth's oAuthProxy plugin sends every Google
+ * sign-in to that one fixed address. The deployment there exchanges the code
+ * with Google, seals the profile with the shared secret and hands it back to
+ * the preview the sign-in started on, which creates the session in its own
+ * database (running the invite-only hooks there). A sign-in that starts on the
+ * fixed address itself is not proxied.
+ *
+ * OAUTH_PROXY_SECRET, when set, seals the hand-off instead of
+ * BETTER_AUTH_SECRET, so the two ends need to share only that. Every
+ * deployment taking part needs the same value (or the same
+ * BETTER_AUTH_SECRET, when it is unset).
+ */
+function proxyPlugins(env: Env) {
+  const productionURL = oauthProxyOrigin(env);
+  if (!productionURL) return [];
+  const secret = env.OAUTH_PROXY_SECRET?.trim() || undefined;
+  return [oAuthProxy({ productionURL, secret })];
+}
+
 function createAuth(db: Db) {
   const google = googleConfig();
   return betterAuth({
     secret: authSecret(),
     baseURL: process.env.BETTER_AUTH_URL?.trim() || undefined,
+    trustedOrigins: trustedOrigins(),
+    plugins: proxyPlugins(process.env),
+    // A sign-in that fails with no error address of its own (the Google
+    // button always passes one) comes back to the sign-in page on the address
+    // it was on, which explains `?error=` codes, rather than Better Auth's
+    // built-in error page.
+    onAPIError: { errorURL: "/sign-in" },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: {
