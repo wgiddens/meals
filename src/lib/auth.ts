@@ -1,6 +1,9 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { APIError } from "better-auth/api";
 import { getDb, schema, type Db } from "@/db";
+import { userRoles, type Role } from "@/db/schema";
+import { completeSignUp, signUpRole } from "@/lib/family";
 
 /**
  * Accounts and sign-in, provided by Better Auth and stored in our own
@@ -51,10 +54,72 @@ function createAuth(db: Db) {
     }),
     // No passwords: people sign in with Google (and, later, passkeys).
     emailAndPassword: { enabled: false },
-    // WARNING: until the invite-only rule from issue #10 is merged, any Google
-    // account can create a user here. Do not set GOOGLE_CLIENT_ID or
-    // GOOGLE_CLIENT_SECRET on any deployment before then (see .env.example).
     socialProviders: google ? { google } : {},
+    user: {
+      additionalFields: {
+        // Server-only: `input: false` makes every client endpoint refuse a
+        // `role` in its body, and keeps it out of what a provider profile can
+        // set. Only the before-create hook below decides it.
+        //
+        // The default is required: Better Auth parses a new OAuth user's
+        // fields before any hook runs and refuses a required field with no
+        // value (MISSING_FIELD). The hook then replaces it with the real role.
+        role: {
+          type: [...userRoles],
+          required: true,
+          input: false,
+          defaultValue: "member" satisfies Role,
+        },
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          // The single choke point for invite-only sign-up: every way of
+          // creating a user, Google included, goes through here. Throwing
+          // stops the insert, so a refused sign-in writes no row. The OAuth
+          // callback redirects with the error code (`NOT_INVITED` or
+          // `EMAIL_NOT_VERIFIED`) for the sign-in page to explain.
+          before: async (user) => {
+            if (user.emailVerified !== true) {
+              throw new APIError("FORBIDDEN", {
+                code: "EMAIL_NOT_VERIFIED",
+                message: "This account's email address has not been verified.",
+              });
+            }
+            const role = await signUpRole(user.email, db);
+            if (!role) {
+              throw new APIError("FORBIDDEN", {
+                code: "NOT_INVITED",
+                message: "This account hasn't been invited.",
+              });
+            }
+            // Written with the row itself, whatever the caller passed.
+            return { data: { role } };
+          },
+          // Runs once the row exists (for Google, once the account is linked
+          // too): the owner gets the family row, a member's invitation is
+          // marked accepted. The display name is left as the provider gave
+          // it; the invitation's name is only a label.
+          //
+          // If the invitation was cancelled while this person was signing in,
+          // completeSignUp deletes the new user (and their linked account)
+          // and the sign-in is refused before any session is created.
+          after: async (user) => {
+            const kept = await completeSignUp(
+              { id: user.id, email: user.email, role: user.role as Role },
+              db,
+            );
+            if (!kept) {
+              throw new APIError("FORBIDDEN", {
+                code: "NOT_INVITED",
+                message: "This account hasn't been invited.",
+              });
+            }
+          },
+        },
+      },
+    },
     session: {
       expiresIn: SESSION_MAX_AGE_SECONDS,
       updateAge: SESSION_REFRESH_SECONDS,
