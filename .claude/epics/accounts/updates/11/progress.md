@@ -9,15 +9,15 @@ completion: 95%
 
 Streams A-D in `11-analysis.md` are implemented on
 `claude/issue-11-member-gate` (see `stream-A.md`). Will's decision on the
-proxy (option C) is implemented. A draft PR into `epic/accounts` is waiting
-for review.
+proxy (option C) is implemented. Draft PR #21 into `epic/accounts`; the
+first review's three findings are fixed (see "Review fixes").
 
 ## Verified
 - `npm run typecheck`, `npm run lint`, `npm run smoke` and
-  `env -u DATABASE_URL npm run build` pass. Smoke runs 316 checks:
-  check:import, check:auth with 89 on PGlite, and smoke.ts.
+  `env -u DATABASE_URL npm run build` pass. Smoke runs 350 checks:
+  check:import, check:auth and smoke.ts.
 - `check:auth` also passes against a throwaway local Postgres 16
-  (`CHECK_AUTH_DATABASE_URL`, 90 checks).
+  (`CHECK_AUTH_DATABASE_URL`, 104 checks).
 - `check:auth` calls `proxy()` directly with a `NextRequest`:
   - a member's cookie gets through;
   - no cookie, a forged signature, a made-up cookie and, after
@@ -75,11 +75,41 @@ for review.
   not in the spec's file list: smoke imported the deleted `household.ts`,
   and the checks prove the criteria.
 
+## Review fixes (first review of PR #21)
+1. **Renewal reaches the browser.** `getSession()` renewed the session in
+   the database about once a day, but dropped the `Set-Cookie`, so an
+   active member's cookie still expired 90 days after sign-in. The proxy
+   now calls `getSession({ headers, returnHeaders: true })` (through
+   `lookUpMember`) and copies each `Set-Cookie` onto its response.
+   - check-auth: a session backdated to 30 days goes through `proxy()`;
+     the row is renewed to 90 days and the response carries the renewed
+     cookie with `Max-Age=7776000`. A second request sets no cookie.
+   - By hand on `next start` against Postgres 16: a session at 80 days
+     gets `Set-Cookie: __Secure-better-auth.session_token=…;
+     Max-Age=7776000; Secure; HttpOnly` and the row goes to 90 days. The
+     next request sets nothing.
+2. **The checks now catch each rule the review could remove unnoticed.**
+   - Look-alike paths are not exempt: `/api/auth`, `/api/authx`,
+     `/api/mcpx`, `/sign-inx`, `/sign-in/x`, `/.well-knownx`.
+   - Closed mode refuses a valid cookie, both in the proxy and in
+     `memberForRequest`.
+   - `/api/mcp`'s check is now a pure `verifyMcpToken(token, env)` in
+     `src/lib/mcp-auth.ts`; smoke checks that production with no key
+     refuses every token.
+   - smoke reads every `"use server"` file under `src` and fails if an
+     exported action does not start with `requireMember()` or
+     `requireOwner()`.
+   - Each mutation from the review was applied by hand and now fails
+     `npm run smoke`. The renewed-cookie copy removed also fails it.
+     Removing the proxy's own `mode === "sign-in"` test does not, because
+     `lookUpMember` returns null in closed mode too, so behaviour is
+     unchanged.
+3. **Stale comments** reworded in `gate.ts`, `actions.ts` and the import
+   and plate routes.
+
 ## Open
-- When `currentMember()` or the proxy reads the session server-side and
-  Better Auth renews it (at most once a day), the expiry moves out in the
-  database but no new cookie reaches the browser. Better Auth's
-  `nextCookies()` plugin may be worth adding with the sign-in page (#12).
+- Waiting on Will (the orchestrator is asking): `/api/auth/*` staying
+  reachable in closed mode, and the dev-owner reuse of an existing owner.
 - `requireOwner()` has no automated check yet: it needs request headers,
   and nothing calls it until the family page (#14).
 
