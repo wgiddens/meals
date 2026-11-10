@@ -18,13 +18,16 @@ Fill in the `<placeholders>` and pass the brief as `claude-code-remote:create_se
 >
 > **Read first:** `CLAUDE.md` and `AGENTS.md`, then `docs/PRODUCT.md`; the
 > task spec `.claude/epics/<epic>/<N>.md`, whose acceptance criteria are the
-> definition of done; `<N>-analysis.md`, `epic.md` and the PRD.
+> definition of done; `<N>-analysis.md`, `epic.md` and the PRD. Use the
+> installed library docs and types, not memory.
 >
 > **Work:**
 > - Use branch `claude/issue-<N>-<slug>`, based on `epic/<name>`.
 > - Commit as `Issue #<N>: …`. Never use `--force`.
 > - Work every stream in the analysis, in order.
 > - Stay in the files the spec lists.
+> - Add your own Drizzle migration for any schema change. Never edit or
+>   regenerate a migration that has been merged.
 > - Update `.claude/epics/<epic>/updates/<N>/progress.md` and `stream-A.md`
 >   as you go. Don't edit `<N>.md` or `execution.md`.
 >

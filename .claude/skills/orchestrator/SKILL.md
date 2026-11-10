@@ -107,7 +107,8 @@ Use ccpm `execute.md`, "Issue Analysis" and "Starting an Issue" (preflight
 ### 3. Start the implementation chat
 - `claude-code-remote:create_session` with `source_url`
   `https://github.com/wgiddens/meals`, `source_revision` `epic/<name>`,
-  `outcome_branch` `claude/issue-<N>-<slug>`, and the implementation brief.
+  `outcome_branch` `claude/issue-<N>-<slug>`, and the implementation brief
+  from [references/briefs.md](references/briefs.md), filled in.
 - Schedule a fallback check-in with `claude-code-remote:send_later`, about
   45-50 minutes out.
 - Record the session id, branch and check-in id under "Active Streams" in
@@ -117,8 +118,9 @@ Use ccpm `execute.md`, "Issue Analysis" and "Starting an Issue" (preflight
 - `claude-code-remote:subscribe_pr_activity` for it.
 - Start the review chat: `claude-code-remote:create_session` with
   `source_url` `https://github.com/wgiddens/meals`, `source_revision`
-  `claude/issue-<N>-<slug>`, no `outcome_branch`, and the review brief. Give
-  it the PR and the spec, not your own conclusions.
+  `claude/issue-<N>-<slug>`, no `outcome_branch`, and the review brief from
+  [references/briefs.md](references/briefs.md), filled in. Give it the PR
+  and the spec, not your own conclusions.
 - Record the PR number and review session id in `execution.md`, and replace
   the old check-in with one for the review.
 
@@ -138,11 +140,11 @@ Check every finding against the code yourself before acting on it.
    the review outcome, what was fixed, and anything left unverified.
 
 ### 7. Close
-After the stakeholder merges, use ccpm `sync.md`, "Closing an Issue", with these
-changes:
-- **Steps 2 and 5** (task `status: closed`, epic `progress:` and both
-  `updated:` fields) and moving the execution record to "Completed" go in
-  one commit to `epic/<name>`.
+After the stakeholder merges, use ccpm `sync.md`, "Closing an Issue", with
+these changes:
+- **Steps 2 and 5** (task `status: closed`, epic `progress:` by
+  `conventions.md`'s integer formula, and both `updated:` fields) and moving
+  the execution record to "Completed" go in one commit to `epic/<name>`.
 - **Step 3:** also remove the `in-progress` label (`github:issue_write`,
   keeping `epic:<name>` and `task`).
 - **Steps 4 and 6:** skip them; closing the issue ticks it off as a
