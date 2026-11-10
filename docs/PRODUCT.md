@@ -110,10 +110,16 @@ from here.
 
 ## Roadmap
 
-### Already in the repo
+Each roadmap item is specified as a PRD in `.claude/prds/` and built as an
+epic in `.claude/epics/` (the CCPM flow). This document says what and in what
+order; the PRDs say exactly what "done" means.
 
-Built in the first scaffold, before this vision. It is the foundation the
-milestones below build on.
+### Already in the repo (prototype)
+
+Built in the first scaffold, before this vision. It is a prototype kept as
+reference, not a foundation: there is no real data and no real users, and the
+`core` PRD replaces it. Features listed here return only when their own PRD
+is built.
 
 - Recipe book with prep/cook time, complexity, family rating, tags,
   ingredients with quantities and store aisle, steps, notes, source.
@@ -131,8 +137,9 @@ milestones below build on.
   `add_grocery_item`, `check_grocery_item`, `remove_grocery_item`. Enough to
   run the plan from a chat: "what's for supper?", "we had it, it was a 4",
   "cross milk off the list". No delete-recipe tool on purpose.
-- Runs locally with zero setup (embedded Postgres); deploys to Vercel +
-  Supabase.
+- Runs locally with zero setup (embedded Postgres); deploys to Vercel with
+  its Neon Postgres integration. Hosting should stay free, or at least very
+  cheap.
 - Household passcode: one shared passcode (`HOUSEHOLD_PASSCODE`) gates the
   web app; each phone signs in once. Assistants keep their own MCP token.
 
@@ -142,6 +149,10 @@ In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
 
+0. **Core (`.claude/prds/core.md`).** Replace the prototype with the
+   foundation everything else needs: the favourites list of dinners (name,
+   effort, ingredients), the allergy list as an absolute filter, simple phone
+   pages to manage both, and the household passcode.
 1. **Weekly draft (`suggest_week`).** A scheduled task drafts the week's
    dinners and saves the plan, ready by Saturday afternoon.
    - Seed the favourites list first: the eight starting favourites, growing
