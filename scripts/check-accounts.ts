@@ -109,13 +109,33 @@ async function main() {
   const family = await import("@/lib/family");
   const member = await import("@/lib/member");
   const { getDb, schema } = await import("@/db");
-  const { eq } = await import("drizzle-orm");
+  const { eq, sql } = await import("drizzle-orm");
   const { makeSignature } = await import("better-auth/crypto");
   const { handleOAuthUserInfo } = await import("better-auth/oauth2");
   const db = await getDb();
 
   const users = await db.select({ id: schema.user.id }).from(schema.user);
   assert(users.length === 0, "the database starts with no users (use an empty, throwaway database)");
+
+  // Records every insert into "user", so a check can tell a refused sign-up
+  // that never wrote a row from one whose row was written and then deleted
+  // again (the after-create hook's fallback). Test instrumentation only, in
+  // the throwaway database; dropped at the end.
+  await db.execute(sql`create table check_accounts_user_inserts (email text not null)`);
+  await db.execute(sql`
+    create function check_accounts_record_user_insert() returns trigger language plpgsql as $$
+    begin insert into check_accounts_user_inserts (email) values (new.email); return new; end $$`);
+  await db.execute(sql`
+    create trigger check_accounts_user_insert after insert on "user"
+    for each row execute function check_accounts_record_user_insert()`);
+  const insertsFor = async (email: string) => {
+    const result = (await db.execute(
+      sql`select count(*)::int as n from check_accounts_user_inserts where email = ${email}`,
+    )) as unknown;
+    // postgres-js returns the rows; PGlite returns { rows }.
+    const rows = (Array.isArray(result) ? result : (result as { rows: { n: number }[] }).rows) as { n: number }[];
+    return Number(rows[0]?.n ?? 0);
+  };
 
   const auth = await getAuth();
   const ctx = await auth.$context;
@@ -150,6 +170,14 @@ async function main() {
       token,
       cookie: `${ctx.authCookies.sessionToken.name}=${encodeURIComponent(signed)}`,
     };
+  };
+  /** googleSignIn() that must succeed; a refusal fails the named assertion. */
+  const expectSignIn = async (label: string, name: string, email: string, extraClaims: Record<string, unknown> = {}) => {
+    try {
+      return await googleSignIn(name, email, extraClaims);
+    } catch (err) {
+      assert(false, `${label}: sign-in for ${email} was refused (${errorCode(err)})`);
+    }
   };
   /** Better Auth's server-side createUser, which runs the same hooks. */
   const adapterCreateUser = (name: string, email: string, role?: string) =>
@@ -194,12 +222,16 @@ async function main() {
     .from(schema.account)
     .where(eq(schema.account.accountId, `google-sub-${stranger}`));
   assert(strangerAccounts.length === 0, "2.3 a refused sign-up links no Google account");
+  assert(
+    (await insertsFor(stranger)) === 0,
+    "2.5 the stranger's user row was never written, not even briefly: the before-create hook refused it",
+  );
 
   // ---- [3] The owner -----------------------------------------------------------
   section("[3] the owner email creates the family row and gets role owner");
   assert((await db.select().from(schema.family)).length === 0, "3.1 there is no family row before the owner signs up");
   // Mixed case, and a profile claim asking for "member": only the hook decides.
-  const ownerSignIn = await googleSignIn("Will", OWNER_EMAIL.toUpperCase(), { role: "member" });
+  const ownerSignIn = await expectSignIn("3.2", "Will", OWNER_EMAIL.toUpperCase(), { role: "member" });
   const owner = ownerSignIn.user;
   assert(
     owner.role === "owner" && owner.email === OWNER_EMAIL,
@@ -217,6 +249,7 @@ async function main() {
     strangerAfterOwner === "NOT_INVITED" && (await usersWithEmail(stranger)).length === 0,
     `2.4 once there is an owner, a stranger is still refused (got ${strangerAfterOwner})`,
   );
+  assert((await insertsFor(stranger)) === 0, "2.6 and again no user row was ever written for them");
 
   // ---- [4] Invited members -----------------------------------------------------
   section("[4] an invited email becomes a member, its invitation becomes accepted; case is ignored");
@@ -232,7 +265,7 @@ async function main() {
     await family.canSignUp(shannonEmail.toUpperCase(), db),
     "4.2 the sign-up rule matches the invitation whatever the case of the email",
   );
-  const shannonSignIn = await googleSignIn("Shannon G.", shannonEmail.toUpperCase(), { role: "owner" });
+  const shannonSignIn = await expectSignIn("4.3", "Shannon G.", shannonEmail.toUpperCase(), { role: "owner" });
   const shannon = shannonSignIn.user;
   assert(
     shannon.role === "member" && shannon.email === shannonEmail,
@@ -363,22 +396,23 @@ async function main() {
       viaAdapter === "NOT_INVITED" && (await usersWithEmail(nextOwnerEmail)).length === 0,
       `8.2 Better Auth's createUser with OWNER_EMAIL and role owner is refused too (got ${viaAdapter})`,
     );
+    assert((await insertsFor(nextOwnerEmail)) === 0, "8.3 no user row was ever written for OWNER_EMAIL");
     // Invited as well: the invitation makes them a member, never an owner.
     await family.inviteMember(owner, { name: "Invited owner email", email: nextOwnerEmail }, db);
-    const invited = await googleSignIn("Invited owner email", nextOwnerEmail);
+    const invited = await expectSignIn("8.4", "Invited owner email", nextOwnerEmail);
     assert(
       invited.user.role === "member",
-      `8.3 an invited OWNER_EMAIL becomes a member, not a second owner (got ${invited.user.role})`,
+      `8.4 an invited OWNER_EMAIL becomes a member, not a second owner (got ${invited.user.role})`,
     );
     await family.removeMember(owner, invited.user.id, db);
   });
-  const again = await googleSignIn("Will again", OWNER_EMAIL);
+  const again = await expectSignIn("8.5", "Will again", OWNER_EMAIL);
   assert(
     again.user.id === owner.id && (await usersWithEmail(OWNER_EMAIL)).length === 1,
-    "8.4 the owner signing in again reaches the same account",
+    "8.5 the owner signing in again reaches the same account",
   );
   const ownerRows = await owners();
-  assert(ownerRows.length === 1 && ownerRows[0].id === owner.id, `8.5 there is still exactly one owner (found ${ownerRows.length})`);
+  assert(ownerRows.length === 1 && ownerRows[0].id === owner.id, `8.6 there is still exactly one owner (found ${ownerRows.length})`);
 
   // ---- [7] Removing a member --------------------------------------------------------
   section("[7] removing a member deletes their sessions, and a lookup then fails; the owner cannot be removed");
@@ -387,12 +421,25 @@ async function main() {
   const shannonSessions = async () =>
     db.select().from(schema.session).where(eq(schema.session.userId, shannon.id));
   assert((await shannonSessions()).length === 2, "7.1 the member has two sessions before removal");
+  // Everything the member's browser would hold: the session cookie, plus any
+  // cookie Better Auth sets when the session is read (such as a session-data
+  // cache, which would let a removed member through).
+  const read = await auth.handler(
+    new Request("http://localhost:3000/api/auth/get-session", { headers: { cookie: shannonSignIn.cookie } }),
+  );
+  const jar = new Map([[ctx.authCookies.sessionToken.name, shannonSignIn.cookie.split("=").slice(1).join("=")]]);
+  for (const c of read.headers.getSetCookie()) {
+    const [pair] = c.split(";");
+    const at = pair.indexOf("=");
+    jar.set(pair.slice(0, at), pair.slice(at + 1));
+  }
+  const browserCookie = [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
   assert(
-    (await sessionFor(shannonSignIn.cookie))?.user.id === shannon.id,
-    "7.2 before removal, getSession resolves the member's cookie",
+    (await sessionFor(browserCookie))?.user.id === shannon.id,
+    "7.2 before removal, getSession resolves the member's cookies",
   );
   assert(
-    (await withEnv(google, () => member.memberForRequest(new Headers({ cookie: shannonSignIn.cookie }))))?.id ===
+    (await withEnv(google, () => member.memberForRequest(new Headers({ cookie: browserCookie }))))?.id ===
       shannon.id,
     "7.3 before removal, the member gate resolves the member's cookie",
   );
@@ -403,10 +450,10 @@ async function main() {
       (await ctx.internalAdapter.findSession(secondSession.token)) === null,
     "7.5 Better Auth no longer finds either session",
   );
-  assert((await sessionFor(shannonSignIn.cookie)) === null, "7.6 getSession with the removed member's cookie returns null");
+  assert((await sessionFor(browserCookie)) === null, "7.6 getSession with the removed member's cookies returns null");
   assert(
-    (await withEnv(google, () => member.memberForRequest(new Headers({ cookie: shannonSignIn.cookie })))) === null,
-    "7.7 the member gate returns no member for the removed member's cookie",
+    (await withEnv(google, () => member.memberForRequest(new Headers({ cookie: browserCookie })))) === null,
+    "7.7 the member gate returns no member for the removed member's cookies",
   );
   const removeOwner = await familyOutcome(family.removeMember(owner, owner.id, db));
   assert(removeOwner === "CANNOT_REMOVE_OWNER", `7.8 removing the owner is refused (got ${removeOwner})`);
@@ -454,18 +501,21 @@ async function main() {
   await db.delete(schema.invitations);
   await db.delete(schema.family);
   const devOwner = await member.ensureDevOwner(db);
-  assert(devOwner.id === member.DEV_OWNER.id && devOwner.role === "owner", "8.6 the dev owner is the family's owner");
+  assert(devOwner.id === member.DEV_OWNER.id && devOwner.role === "owner", "8.7 the dev owner is the family's owner");
   const takeover = await outcome(googleSignIn("Will", OWNER_EMAIL));
   assert(
-    takeover === "NOT_INVITED" && (await usersWithEmail(OWNER_EMAIL)).length === 0,
-    `8.7 OWNER_EMAIL cannot sign up as a second owner beside the dev owner (got ${takeover})`,
+    takeover === "NOT_INVITED" && (await usersWithEmail(OWNER_EMAIL)).length === 0 && (await insertsFor(OWNER_EMAIL)) === 1,
+    `8.8 OWNER_EMAIL cannot sign up as a second owner beside the dev owner, and no new row is written (got ${takeover})`,
   );
   const devOwners = await owners();
-  assert(devOwners.length === 1 && devOwners[0].id === member.DEV_OWNER.id, "8.8 the dev owner is still the only owner");
+  assert(devOwners.length === 1 && devOwners[0].id === member.DEV_OWNER.id, "8.9 the dev owner is still the only owner");
 
   // Leave nothing behind on a real server.
   await db.delete(schema.user).where(eq(schema.user.id, member.DEV_OWNER.id));
   await db.delete(schema.family);
+  await db.execute(sql`drop trigger check_accounts_user_insert on "user"`);
+  await db.execute(sql`drop function check_accounts_record_user_insert()`);
+  await db.execute(sql`drop table check_accounts_user_inserts`);
 
   console.log("\nAccount rule checks passed.");
 }
