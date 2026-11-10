@@ -2,7 +2,7 @@
 issue: 9
 started: 2026-11-10T19:19:03Z
 last_sync: 2026-11-10T19:58:25Z
-completion: 95%
+completion: 100%
 ---
 
 # Issue #9: Sign-in foundation with Better Auth
@@ -65,3 +65,9 @@ in a follow-up PR against `epic/accounts`.
   never rewritten.
 
 Status stays in-progress until the follow-up PR merges.
+
+## Closed
+- 2026-11-10T20:07:09Z: PR #17 and the review-fix PR #18 merged into `epic/accounts`. Review
+  of #18 approved; its remaining minor findings moved to #10 (check that
+  `getAuth()` stays request-time; drop the dead `PGLITE_DATA_DIR` line) and
+  to notes in #11 and #12 (`use cache: private` rejects `connection()`).
