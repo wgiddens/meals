@@ -10,9 +10,8 @@ job is to keep work moving through the flow below, keep ccpm's records
 true, and bring Will in only when his attention is needed.
 
 **Keep this skill current.** When Will corrects the flow, or something goes
-wrong that a rule would have prevented, edit the rule in the same session and
-add a line to the lessons log at the bottom. Rules state what to do; the
-reasons go in the lessons log. Changes reach `main` through a reviewed PR.
+wrong that a rule would have prevented, edit the rule in the same session.
+Rules state what to do, not why. Changes reach `main` through a reviewed PR.
 
 Read `docs/PRODUCT.md` and the ccpm skill (`.claude/skills/ccpm/SKILL.md` and
 `references/conventions.md`) before acting. Each step below names the ccpm
@@ -346,60 +345,3 @@ nothing in the diff affects them.
   first, then open a final draft PR into `main` and post a short QA comment
   on it for the Vercel preview. Will merges it after review. Only the
   commit-free cleanup happens after the merge.
-
-## Lessons log
-Add one line per lesson: date, what happened, and the rule it changed.
-
-- 2026-11-10: The standup ran on `main` and reported #9 as not started, but
-  it was already merged into `epic/accounts`, so a duplicate implementation
-  chat was launched. Rules added: read state from the epic branch, and check
-  for existing PRs and branches before starting a task.
-- 2026-11-10: #9 was built without an analysis file and merged without
-  review. Rule: step 2 is mandatory, and no PR goes to Will without a review.
-- 2026-11-10: Will chose a PR per task into the epic branch plus a final
-  epic PR, with Will approving and the orchestrator merging (superseded below).
-- 2026-11-10: Will asked for reviews to run in a separate chat, not a
-  subagent.
-- 2026-11-10: Will decided each task adds its own Drizzle migration, and an
-  applied migration is never rewritten.
-- 2026-11-10: Will merged PR #18 before its review finished: GitHub won't let
-  him approve PRs his account authored, and every chat here authors as him.
-  Rules changed: Will merges (his merge is the approval); PRs open as drafts,
-  and the orchestrator marks them ready only after review.
-- 2026-11-10: Will asked that the review chat post its findings on the PR,
-  plus a "review done" comment, so the review is visible on GitHub.
-- 2026-11-10: Minor review findings that can wait go into the next suitable
-  task's spec, not a separate follow-up PR (#9's went into #10, #11 and #12).
-  Superseded by the PR #19 review entry below.
-- 2026-11-10: Will wants every PR reviewed by a review chat before it is
-  marked ready, docs-only PRs included (first case: this skill's own PR).
-- 2026-11-10: The PR #19 review found that the close step for #9 had skipped
-  ccpm's epic-progress update, and that a fresh session couldn't follow the
-  skill. Steps now cite ccpm sections and list only our differences.
-  In-flight session ids and check-in ids go in `execution.md`, and the
-  epic's closing bookkeeping happens before the final PR. ccpm now points to
-  this skill and runs its scripts from the epic worktree. Will decided:
-  - drop the per-task Neon step for now
-  - fix confirmed findings, minor ones included, in the same PR
-  - handle post-merge defects with a follow-up PR while the epic is open
-  - run builds with `DATABASE_URL` unset
-- 2026-11-10: Will asked (on PR #19) that replies to his PR comments go on
-  the PR, not in chat, and that each final epic PR gets a short, high-level
-  QA comment for checking the Vercel preview before the epic merges. He also
-  questioned background in the rules; the "Will merges" rule was trimmed to
-  what an agent needs.
-- 2026-11-10: Will asked for a wider pass: rules say what to do, and the
-  reasons live in this log. Reasons moved here:
-  - `Refs`, not `Closes`: GitHub auto-closes only on the default branch.
-  - Neon is skipped because a branch made by the orchestrator lives in its
-    container, where the implementation chat can't use it.
-  - The fallback check-in exists because a child chat that finishes cleanly
-    may not report back.
-  - The build runs with `DATABASE_URL` unset because it migrates whatever
-    database that points at.
-  - The epic's closing bookkeeping goes on `epic/<name>` so it reaches
-    `main` through the reviewed PR.
-- 2026-11-10: The PR #19 re-check noted that every chat posts as
-  `wgiddens`, so Will's PR comments can't be told apart by author. Will
-  decided his PR comments count as requests, the same as chat; the skill now
-  says how to recognise them.
