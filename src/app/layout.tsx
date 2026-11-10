@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Geist } from "next/font/google";
-import { Suspense } from "react";
-import { SignOutLink } from "@/components/SignOutLink";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -48,9 +46,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Ask Claude, ChatGPT or Gemini &ldquo;what&rsquo;s for supper?&rdquo; once they&rsquo;re connected to
             this app. See the README.
           </span>
-          <Suspense fallback={null}>
-            <SignOutLink />
-          </Suspense>
+          <span className="flex gap-3">
+            <Link href="/family" className="underline hover:text-stone-600">
+              Family
+            </Link>
+            <Link href="/account" className="underline hover:text-stone-600">
+              My account
+            </Link>
+          </span>
         </footer>
       </body>
     </html>

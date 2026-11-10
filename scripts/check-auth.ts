@@ -13,6 +13,10 @@
  * owner-only actions; `role` cannot be set through the client API; and
  * removing a member removes their sessions, accounts and row.
  *
+ * And the proxy (src/proxy.ts) as the gate: it looks the session up, so a
+ * member gets through while a forged cookie or a removed member's cookie is
+ * redirected to sign-in (pages) or gets 401 (API routes).
+ *
  *   npm run check:auth
  *
  * By default this runs against a throwaway embedded database (PGlite). To run
@@ -430,6 +434,155 @@ async function main() {
     "get-session accepts the signed session cookie",
   );
   assert(getSessionBody?.user?.role === "member", "the session's user carries their role");
+  // ---- getAuth() is request-time -----------------------------------------------------
+  // Inside Next.js, getDb() awaits connection() so whatever follows is
+  // per-request. getAuth() must do that on every call, not only the first
+  // (when it builds the instance). Stub connection() before getDb() first
+  // imports next/server, and count.
+  const nextServer = createRequire(import.meta.url)("next/server") as { connection: () => Promise<void> };
+  const realConnection = nextServer.connection;
+  let connectionCalls = 0;
+  nextServer.connection = async () => {
+    connectionCalls += 1;
+  };
+  process.env.NEXT_RUNTIME = "nodejs";
+  try {
+    for (let i = 1; i <= 3; i++) {
+      assert((await getAuth()) === auth, `getAuth() call ${i} under NEXT_RUNTIME returns the cached instance`);
+      assert(connectionCalls === i, `getAuth() call ${i} awaited connection() (calls so far: ${connectionCalls})`);
+    }
+  } finally {
+    delete process.env.NEXT_RUNTIME;
+    nextServer.connection = realConnection;
+  }
+
+  // ---- The proxy looks the session up ------------------------------------------
+  // src/proxy.ts is called directly with a NextRequest, as Next.js calls it.
+  // Google is set for these calls only, so the gate is in sign-in mode and not
+  // the dev-owner shortcut; the Better Auth instance is already built.
+  const { proxy } = await import("@/proxy");
+  const { NextRequest } = await import("next/server");
+  const { memberForRequest } = await import("@/lib/member");
+  const env = process.env as Record<string, string | undefined>;
+  /** Runs fn with these environment variables, restoring them afterwards. */
+  const withEnv = async <T>(vars: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> => {
+    const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, env[k]]));
+    const apply = (values: Record<string, string | undefined>) => {
+      for (const [k, v] of Object.entries(values)) {
+        if (v === undefined) delete env[k];
+        else env[k] = v;
+      }
+    };
+    apply(vars);
+    try {
+      return await fn();
+    } finally {
+      apply(saved);
+    }
+  };
+  const google = { GOOGLE_CLIENT_ID: "check-id", GOOGLE_CLIENT_SECRET: "check-secret" };
+  const signInMode = <T>(fn: () => Promise<T>) => withEnv(google, fn);
+  /** Production with Google but no BETTER_AUTH_SECRET: gateMode is "closed". */
+  const closedMode = <T>(fn: () => Promise<T>) =>
+    withEnv({ ...google, NODE_ENV: "production", BETTER_AUTH_SECRET: undefined }, fn);
+  const callProxy = (pathname: string, cookieHeader?: string) =>
+    proxy(
+      new NextRequest(`http://localhost:3000${pathname}`, {
+        headers: cookieHeader ? { cookie: cookieHeader } : {},
+      }),
+    );
+  const throughProxy = (pathname: string, cookieHeader?: string) =>
+    signInMode(() =>
+      proxy(
+        new NextRequest(`http://localhost:3000${pathname}`, {
+          headers: cookieHeader ? { cookie: cookieHeader } : {},
+        }),
+      ),
+    );
+  /** "through", "401", or the redirect's path and query. */
+  const outcomeOf = (res: Response) => {
+    if (res.headers.get("x-middleware-next") === "1") return "through";
+    if (res.status === 401) return "401";
+    const location = res.headers.get("location");
+    return location ? new URL(location).pathname + new URL(location).search : `status ${res.status}`;
+  };
+  const proxyOutcome = async (pathname: string, cookieHeader?: string) =>
+    outcomeOf(await throughProxy(pathname, cookieHeader));
+  const forged = `${ctx.authCookies.sessionToken.name}=${encodeURIComponent(`${session.token}.forged-signature`)}`;
+  const madeUp = `${ctx.authCookies.sessionToken.name}=made-up`;
+  assert((await proxyOutcome("/plan", cookie)) === "through", "proxy: a member's session cookie gets to /plan");
+  assert((await proxyOutcome("/api/import", cookie)) === "through", "proxy: a member's session cookie gets to /api/import");
+  for (const [label, c] of [["no cookie", undefined], ["a forged signature", forged], ["a made-up cookie", madeUp]] as const) {
+    const page = await proxyOutcome("/recipes?q=a", c);
+    assert(page === "/sign-in?next=%2Frecipes%3Fq%3Da", `proxy: ${label} is redirected to sign-in from a page (got ${page})`);
+    const api = await proxyOutcome("/api/plate", c);
+    assert(api === "401", `proxy: ${label} gets 401 from /api/* (got ${api})`);
+  }
+  for (const exempt of ["/sign-in", "/api/auth/get-session", "/api/mcp", "/.well-known/oauth-protected-resource"]) {
+    assert((await proxyOutcome(exempt)) === "through", `proxy: ${exempt} is reachable signed out`);
+  }
+  // Only the exact exempt paths are exempt, not anything that starts the same.
+  for (const [lookAlike, expected] of [
+    ["/api/auth", "401"],
+    ["/api/authx", "401"],
+    ["/api/authx/get-session", "401"],
+    ["/api/mcpx", "401"],
+    ["/sign-inx", "/sign-in?next=%2Fsign-inx"],
+    ["/sign-in/x", "/sign-in?next=%2Fsign-in%2Fx"],
+    ["/.well-knownx", "/sign-in?next=%2F.well-knownx"],
+  ] as const) {
+    const got = await proxyOutcome(lookAlike);
+    assert(got === expected, `proxy: look-alike path ${lookAlike} is not exempt (got ${got})`);
+  }
+
+  // Production with sign-in not configured: a valid cookie gets nowhere.
+  const closedPage = outcomeOf(await closedMode(() => callProxy("/plan", cookie)));
+  assert(closedPage === "/sign-in?next=%2Fplan", `proxy: closed mode redirects even a valid cookie (got ${closedPage})`);
+  const closedApi = outcomeOf(await closedMode(() => callProxy("/api/import", cookie)));
+  assert(closedApi === "401", `proxy: closed mode answers 401 to /api/* even with a valid cookie (got ${closedApi})`);
+  assert(
+    (await closedMode(() => memberForRequest(new Headers({ cookie })))) === null,
+    "memberForRequest returns null in closed mode, even for a valid cookie",
+  );
+
+  // Renewal reaches the browser: with the session pulled back to 30 days,
+  // a request through the proxy renews the row to 90 days and passes the
+  // renewed cookie on.
+  await db
+    .update(schema.session)
+    .set({ expiresAt: new Date(Date.now() + 30 * DAY_MS) })
+    .where(eq(schema.session.token, session.token));
+  const renewedThroughProxy = await throughProxy("/plan", cookie);
+  assert(outcomeOf(renewedThroughProxy) === "through", "proxy: the backdated session still gets through");
+  const proxyRenewedDays = await daysLeft();
+  assert(
+    Math.abs(proxyRenewedDays - 90) < 0.01,
+    `proxy: the session row is renewed to 90 days (got ${proxyRenewedDays.toFixed(2)})`,
+  );
+  const renewedCookie = renewedThroughProxy.headers
+    .getSetCookie()
+    .find((c) => c.startsWith(`${ctx.authCookies.sessionToken.name}=`));
+  const maxAge = Number(/max-age=(\d+)/i.exec(renewedCookie ?? "")?.[1]);
+  assert(
+    renewedCookie?.includes(encodeURIComponent(signed)) && Math.abs(maxAge - SESSION_MAX_AGE_SECONDS) < 5,
+    `proxy: the response sets the renewed session cookie for 90 days (got ${renewedCookie ?? "no cookie"})`,
+  );
+  const notRenewedAgain = await throughProxy("/plan", cookie);
+  assert(
+    notRenewedAgain.headers.getSetCookie().length === 0,
+    "proxy: a session renewed less than a day ago sets no cookie",
+  );
+
+  const viaProxy = await signInMode(() => memberForRequest(new Headers({ cookie })));
+  assert(
+    viaProxy?.id === member.id && viaProxy.role === "member" && viaProxy.email === email,
+    "memberForRequest returns the member's id, name, email and role",
+  );
+  assert(
+    (await signInMode(() => memberForRequest(new Headers({ cookie: forged })))) === null,
+    "memberForRequest returns null for a forged cookie",
+  );
+
   const renewed = await daysLeft();
   assert(Math.abs(renewed - 90) < 0.01, `using the session renews it to 90 days (got ${renewed.toFixed(2)})`);
   const setCookie = getSession.headers.getSetCookie().join("\n");
@@ -497,6 +650,10 @@ async function main() {
   );
   const afterRemovalBody = await afterRemoval.json().catch(() => "unreadable");
   assert(afterRemovalBody === null, "get-session with the removed member's cookie returns no session");
+  const removedPage = await proxyOutcome("/plan", cookie);
+  assert(removedPage === "/sign-in?next=%2Fplan", `proxy: the removed member's cookie is redirected to sign-in (got ${removedPage})`);
+  const removedApi = await proxyOutcome("/api/import", cookie);
+  assert(removedApi === "401", `proxy: the removed member's cookie gets 401 from /api/* (got ${removedApi})`);
   const comeBack = await refusal(createUser("Shannon", memberEmail));
   assert(comeBack === "NOT_INVITED", `a removed member cannot sign up again without a new invitation (got ${comeBack})`);
   const missing = await familyError(family.removeMember(owner, member.id, db));
@@ -530,28 +687,6 @@ async function main() {
   );
   await db.delete(schema.family);
   await db.delete(schema.user).where(like(schema.user.email, `%-${RUN}@example.com`));
-
-  // ---- getAuth() is request-time -----------------------------------------------------
-  // Inside Next.js, getDb() awaits connection() so whatever follows is
-  // per-request. getAuth() must do that on every call, not only the first
-  // (when it builds the instance). Stub connection() before getDb() first
-  // imports next/server, and count.
-  const nextServer = createRequire(import.meta.url)("next/server") as { connection: () => Promise<void> };
-  const realConnection = nextServer.connection;
-  let connectionCalls = 0;
-  nextServer.connection = async () => {
-    connectionCalls += 1;
-  };
-  process.env.NEXT_RUNTIME = "nodejs";
-  try {
-    for (let i = 1; i <= 3; i++) {
-      assert((await getAuth()) === auth, `getAuth() call ${i} under NEXT_RUNTIME returns the cached instance`);
-      assert(connectionCalls === i, `getAuth() call ${i} awaited connection() (calls so far: ${connectionCalls})`);
-    }
-  } finally {
-    delete process.env.NEXT_RUNTIME;
-    nextServer.connection = realConnection;
-  }
 
   // Production with no secret must fail closed. A fresh child process, so no
   // instance is cached. On PGlite it makes its own temporary database when it
