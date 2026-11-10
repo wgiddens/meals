@@ -149,12 +149,16 @@ In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
 
-Two foundation pieces come before the numbered items, in this order:
+Foundation pieces come before the numbered items. Accounts, then core, are
+built first:
 
 - **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
   account in one invite-only family, with an owner who manages members.
-  Sign in with Google, an email link or a passkey. Replaces the shared
-  household passcode.
+  Sign in with Google or a passkey. Replaces the shared household passcode.
+- **Email (`.claude/prds/email.md`), any time after accounts.** The app can
+  send email from our own domain: invitation emails and sign-in by email
+  link, so a Google account is no longer required. Nothing else waits on
+  it.
 - **Core (`.claude/prds/core.md`).** Replace the prototype with the
   foundation everything else needs: the favourites list of dinners (name,
   effort, ingredients), the allergy list as an absolute filter, and simple

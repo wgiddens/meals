@@ -1,8 +1,9 @@
 ---
 name: accounts
-description: Personal accounts for one family, invite only, with Google, email-link and passkey sign-in and an owner who manages members; replaces the shared household passcode
+description: Personal accounts for one family, invite only, with Google and passkey sign-in and an owner who manages members; replaces the shared household passcode
 status: backlog
 created: 2026-11-10T16:56:42Z
+updated: 2026-11-10T18:07:42Z
 ---
 
 # PRD: accounts
@@ -11,8 +12,9 @@ created: 2026-11-10T16:56:42Z
 
 Each person in the family gets their own account. There is one family, it is
 invite only, and its owner decides who is in it. People sign in with Google,
-with a link sent to their email, or with a passkey (Face ID or fingerprint)
-once they have set one up. There are no passwords.
+or with a passkey (Face ID or fingerprint) once they have set one up. There
+are no passwords, and this PRD sends no email: email-link sign-in and
+invitation emails are added later by the `email` PRD.
 
 This replaces the prototype's shared household passcode, which is removed.
 It is the first thing built: `core` and every later PRD rely on it to know
@@ -42,8 +44,8 @@ As Will, I become the family's owner the first time I sign in.
 
 Acceptance criteria:
 - The deployment names one owner email in configuration. The first
-  successful sign-in with that email creates the family and makes that
-  account the owner.
+  successful Google sign-in with that email creates the family and makes
+  that account the owner.
 - Until then, no one else can sign in.
 - No one can create an account or a family by any other route.
 
@@ -52,22 +54,11 @@ As a family member, I tap "Continue with Google" and I'm in.
 
 Acceptance criteria:
 - Sign-in succeeds only when the Google account's verified email matches
-  the owner email or a current invitation or member.
+  the owner email, a pending invitation or a current member.
 - Any other Google account sees "This account hasn't been invited" and no
   account is created.
 
-### 3. Sign in with an email link
-As a family member, I type my email and tap the link that arrives.
-
-Acceptance criteria:
-- The link works once and expires after 15 minutes.
-- The page always answers "If that address is invited, a link is on its
-  way", whether or not it is, so it never reveals who is a member.
-- No email is sent to an address that is not the owner, a member or
-  invited.
-- Requests are limited to 5 per address per hour.
-
-### 4. Sign in with a passkey
+### 3. Sign in with a passkey
 As a family member, after my first sign-in I use Face ID or my fingerprint
 instead.
 
@@ -75,34 +66,36 @@ Acceptance criteria:
 - A signed-in member can add a passkey to their account from their account
   page, and can remove it.
 - The sign-in page offers passkey sign-in; a registered passkey signs the
-  member in without Google or email.
-- A member with a lost device can always still sign in with Google or an
-  email link.
+  member in without going through Google.
+- A member with a lost device can always still sign in with Google.
 
-### 5. Invite a family member
+### 4. Invite a family member
 As the owner, I add Shannon by typing her name and email.
 
 Acceptance criteria:
-- The owner enters a name and an email on the family page; an invitation
-  email with a sign-in link is sent.
-- An invitation expires after 7 days, can be re-sent, and can be cancelled.
-- The invited person becomes a member the first time they sign in by any
-  method with that email.
-- Pending invitations are listed on the family page.
+- The owner enters a name and a Google account email on the family page.
+  This records an invitation; no email is sent.
+- The page then shows the app's address for the owner to pass on, with a
+  note that the person signs in with Google using that email.
+- The invited person becomes a member the first time they sign in with
+  Google using that email.
+- Pending invitations are listed on the family page and can be cancelled.
+- Inviting an email that is already a member or already invited is refused
+  with a clear message.
 
-### 6. Manage the family
+### 5. Manage the family
 As the owner, I see who is in the family and can remove someone.
 
 Acceptance criteria:
 - The family page lists each member's name, email and role (owner or
   member).
 - The owner can remove a member. That member's sessions end immediately
-  and they can no longer sign in.
+  and they can no longer sign in by Google or passkey.
 - The owner cannot be removed and cannot remove themselves.
 - A member can see the family page but has no invite, cancel or remove
   controls, and the server refuses those actions from a member.
 
-### 7. Stay signed in, and sign out
+### 6. Stay signed in, and sign out
 As a family member, I sign in once on my phone and it stays that way.
 
 Acceptance criteria:
@@ -110,7 +103,7 @@ Acceptance criteria:
 - Sign out ends the session on that device.
 - A member can change their own display name.
 
-### 8. Everything is behind sign-in
+### 7. Everything is behind sign-in
 As the family, nobody outside it can see or change anything.
 
 Acceptance criteria:
@@ -127,19 +120,19 @@ Acceptance criteria:
 - One family per deployment. It has a name and exactly one owner.
 - A member has: name, email (unique, case-insensitive), role (`owner` or
   `member`), and the date they joined.
-- An invitation has: name, email, who invited them, sent and expiry times,
-  and a state (pending, accepted, cancelled, expired).
-- Identity is the verified email. A person who signs in with Google and
-  later with an email link, using the same address, is the same member.
+- An invitation has: name, email, who invited them, when, and a state
+  (pending, accepted, cancelled).
+- Identity is the verified email. This is what lets the `email` PRD later
+  add link sign-in for the same member without a second account.
 
 ### Sign-in methods
-- Google, email link and passkey, as in stories 2 to 4. No passwords and no
+- Google and passkey, as in stories 2 and 3. No passwords and no
   text-message codes.
 - Passkeys are an addition to an existing account, never a way to create
   one.
 
 ### Roles
-- **Owner:** invite, re-send, cancel, remove members; rename the family.
+- **Owner:** invite, cancel invitations, remove members; rename the family.
 - **Member:** everything else in the app, equally with the owner.
 - Meal, allergy and plan features do not differ by role.
 
@@ -162,31 +155,29 @@ Acceptance criteria:
 
 ## Non-Functional Requirements
 
-- **Cost:** $0 per month at family scale. Google sign-in and passkeys are
-  free; email is sent through a provider's free tier.
-- **Don't hand-roll security.** Sessions, Google sign-in, one-time links
-  and passkeys come from an established, maintained library that stores its
-  data in the app's own Postgres. The epic chooses it.
+- **Cost:** $0 per month. Google sign-in and passkeys are free and no email
+  is sent.
+- **Don't hand-roll security.** Sessions, Google sign-in and passkeys come
+  from an established, maintained library that stores its data in the app's
+  own Postgres. The epic chooses it, preferring one that can add email-link
+  sign-in later without a rewrite.
 - **Session safety:** cookies are HttpOnly, Secure in production and
-  SameSite=Lax; one-time links are stored hashed and are single use.
+  SameSite=Lax.
 - **Privacy:** the only personal data stored is name and email. Emails are
   never shown to anyone outside the family.
-- **Mobile first:** sign-in works one-handed at 375 px; with a passkey or
-  Google it takes no typing.
-- **Tests:** automated tests cover an uninvited email being refused by each
-  method, an expired or reused link being refused, a removed member losing
-  access, and a member being refused owner actions.
+- **Mobile first:** sign-in works one-handed at 375 px and takes no typing.
+- **Tests:** automated tests cover an uninvited Google account being
+  refused, a removed member losing access by both methods, and a member
+  being refused owner actions.
 - **Quality gates:** typecheck, lint, smoke check and build green in CI,
   with no sign-in secrets needed in CI.
 
 ## Success Criteria
 
 - Will and Shannon each sign in on their own phone with their own account.
-- A returning member with a passkey or Google reaches the app in under 10
-  seconds with no typing.
+- A returning member reaches the app in under 10 seconds with no typing.
 - 100% of sign-in attempts from an email that is not the owner, a member or
-  invited are refused and create no account, verified by automated tests
-  for all three methods.
+  invited are refused and create no account, verified by automated tests.
 - A removed member's next request is refused, verified by an automated test.
 - Inviting a member takes the owner under 30 seconds.
 - No reference to `HOUSEHOLD_PASSCODE` remains in code or documentation.
@@ -199,23 +190,22 @@ Acceptance criteria:
 - **Built first, before `core`.** The accounts epic lands on the prototype
   codebase and replaces its passcode gate; `core` then replaces the pages
   behind it.
+- **Every member needs a Google account** until the `email` PRD is built.
+  This is accepted for Will and Shannon.
 - **One family only.** Family data is not tagged with a family id. Opening
   the app to other families later would require adding one throughout; that
   cost is accepted for now.
-- **Email needs a sending address.** Most free email services will only
-  send to arbitrary recipients from a domain you have verified. If no
-  domain is available, the email-link method and invitation emails are
-  limited, and the owner can instead tell the person to use Google once
-  invited. To be settled when the epic is written.
 - **Google sign-in needs a Google Cloud project** with an OAuth client,
   which is free.
 - **Passkeys need a stable site address.** A passkey is tied to the domain
   it was created on, so changing the app's domain later invalidates
-  existing passkeys; members fall back to Google or email.
+  existing passkeys; members fall back to Google.
 - Children do not get accounts in this version.
 
 ## Out of Scope
 
+- Anything that sends email: invitation emails and email-link sign-in
+  (`email`).
 - Multiple families, open sign-up, or creating a second family.
 - Passwords, text-message codes, and two-step verification beyond what
   Google and passkeys already give.
@@ -231,10 +221,9 @@ Acceptance criteria:
 
 ## Dependencies
 
-- `docs/PRODUCT.md` – it wins on conflict. Its "Not now" entry on accounts
-  is updated alongside this PRD.
+- `docs/PRODUCT.md` – it wins on conflict.
 - A Google Cloud OAuth client (client id and secret on the deployment).
-- An email-sending service on a free tier, and ideally a verified domain.
 - The owner's email in deployment configuration.
 - A session secret on the deployment.
-- Nothing upstream: this is the first PRD built. `core` depends on it.
+- Nothing upstream: this is the first PRD built. `core` and `email` depend
+  on it.
