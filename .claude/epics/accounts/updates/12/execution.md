@@ -4,7 +4,7 @@
   - Branch: claude/issue-12-sign-in-account
   - PR: #24 (draft), opened 2026-11-10T21:58Z
   - Review chat: session_01DNZtwxgbJxfWyaxPEsZ3Td (started 2026-11-10T21:58Z)
-  - Pending check-in: trig_01QW2PcCYR3h6chZhsUUA9pk (shared by #12, #14 and #15; fires 2026-11-10T22:44Z)
+  - Pending check-in: trig_01J4uYFiZEtQYuaJyxcYUQQs (shared by #12 and #15; fires 2026-11-10T23:30Z)
 
 ## Queued
 (none)
