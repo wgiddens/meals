@@ -22,6 +22,18 @@ Stream A in `15-analysis.md` is implemented on
   objects behind.
 - Mutation run: see `stream-A.md`.
 
+## Added at the stakeholder's request (via the orchestrator)
+- `scripts/smoke.ts`: the Server Action scan requires every exported action
+  in `src/app/family/actions.ts` to start with `await requireOwner()`
+  (`requireMember()` is not enough there). With the file absent (it arrives
+  with #14's PR #22) there is nothing to check. Fixtures prove a
+  `requireMember()` action fails and a `requireOwner()` one passes. Also
+  checked on real files: a temporary `actions.ts` with `requireMember()`
+  makes smoke exit 1 and with `requireOwner()` exit 0; PR #22's
+  `actions.ts` passes (13 actions scanned on that branch).
+- typecheck, lint, smoke, check:accounts and `env -u DATABASE_URL` build
+  pass again.
+
 ## Not changed
 - `scripts/check-auth.ts` keeps its overlapping family-rule assertions;
   see the PR's "Decisions and open questions".
