@@ -4,7 +4,7 @@
   - Branch: claude/issue-15-account-checks
   - PR: #23 (draft), opened 2026-11-10T21:55Z
   - Review chat: session_01DNZtwvV1EPPeW3MGVF1KB2 (started 2026-11-10T21:56Z)
-  - Pending check-in: trig_0135jK8x22KZBYDbAuN1PpEc (shared by #12, #14 and #15; fires 2026-11-10T22:32Z)
+  - Pending check-in: trig_01QW2PcCYR3h6chZhsUUA9pk (shared by #12, #14 and #15; fires 2026-11-10T22:44Z)
 
 ## Queued
 (none)
