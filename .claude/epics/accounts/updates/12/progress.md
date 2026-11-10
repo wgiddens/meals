@@ -1,7 +1,7 @@
 ---
 issue: 12
 started: 2026-11-10T21:41:08Z
-last_sync: 2026-11-10T21:41:08Z
+last_sync: 2026-11-10T22:05:00Z
 completion: 100%
 ---
 
@@ -9,7 +9,7 @@ completion: 100%
 
 All three streams in `12-analysis.md` are implemented on
 `claude/issue-12-sign-in-account` (see `stream-A.md`), in three commits.
-Files touched are only those the spec lists.
+Files touched are only those the spec lists. Draft PR #24 into `epic/accounts`.
 
 ## Verified
 - `npm run typecheck`, `npm run lint`, `npm run smoke` and
@@ -109,3 +109,5 @@ Files touched are only those the spec lists.
   checklist.
 - `HOUSEHOLD_PASSCODE` is still described in `.env.example`, `README.md`
   and `docs/ARCHITECTURE.md`. Left for #16, which owns the docs.
+
+<!-- SYNCED: 2026-11-10T22:05:00Z -->
