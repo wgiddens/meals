@@ -149,10 +149,14 @@ grep 'github:' <file> | grep -oE '[0-9]+$'
   # Works in single-branch cloud clones too (no upstream tracking needed).
   git fetch origin epic/<name>:refs/remotes/origin/epic/<name>
   if [ ! -d ../epic-<name> ]; then
-    git worktree add -B epic/<name> ../epic-<name> origin/epic/<name>
-  else
-    git -C ../epic-<name> merge --ff-only origin/epic/<name>
+    if git show-ref --verify --quiet refs/heads/epic/<name>; then
+      # Keep any unpushed local commits; never reset an existing branch.
+      git worktree add ../epic-<name> epic/<name>
+    else
+      git worktree add -b epic/<name> ../epic-<name> origin/epic/<name>
+    fi
   fi
+  git -C ../epic-<name> merge --ff-only origin/epic/<name>
   cd ../epic-<name> && bash .claude/skills/ccpm/references/scripts/next.sh
   ```
 - In this repo, starting tasks, closing them and merging epics follow the

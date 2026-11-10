@@ -20,8 +20,9 @@ Two local rules come before everything below:
 - **Epic and task files live on the epic branch, not `main`.** Run every
   tracking script (status, standup, next, blocked, in-progress, epic-status,
   validate) from the epic worktree `../epic-<name>/`, set up as described in
-  `references/conventions.md` "Git / Worktree Conventions". Run on `main`,
-  they report no epics or tasks.
+  `references/conventions.md` "Git / Worktree Conventions". On `main` they
+  read a stale snapshot of the epic files from before the epic branch moved
+  on, so their output looks valid but is wrong.
 
 ## Core Philosophy
 
