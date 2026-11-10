@@ -84,9 +84,9 @@ Files touched are only those the spec lists. Draft PR #24 into `epic/accounts`.
 - **`onAPIError.errorURL = "/sign-in"`**, so a failure without an error
   address (a tampered hand-back, a lost state) comes to the sign-in page's
   generic message rather than Better Auth's error page on the proxy.
-- **Optional `OAUTH_PROXY_SECRET`** seals the hand-off instead of
-  `BETTER_AUTH_SECRET`, so when production later becomes the proxy,
-  previews need not share production's main secret.
+- **`OAUTH_PROXY_SECRET`** seals the hand-off instead of
+  `BETTER_AUTH_SECRET`. Since the review it is required and must differ
+  from `BETTER_AUTH_SECRET` (see "Review fixes").
 - **Sign out is a Server Action** calling `auth.api.signOut` and copying
   Better Auth's expiring cookie through `cookies()`; no client component, so
   it works before JavaScript loads. The display name form is a plain form
@@ -97,16 +97,97 @@ Files touched are only those the spec lists. Draft PR #24 into `epic/accounts`.
 - **Signed-in redirect** goes to the safe `next` path, which is `/` when
   there is none, as #11's placeholder did.
 
+## Review fixes (review of PR #24)
+1. **Forged hand-back on the fixed deployment (should-fix, security).**
+   The fixed deployment registered the plugin's hand-back endpoints, so a
+   payload sealed with `OAUTH_PROXY_SECRET` alone signed in as the owner
+   there. Under the old plan, production would have accepted it too.
+   - `oauthProxyRole(env)` is `off`, `fixed` or `receiver`, decided from the
+     environment only. It is `fixed` when `VERCEL_ENV=production`, or when
+     `VERCEL_BRANCH_URL` is `OAUTH_PROXY_URL`. A `fixed` deployment gets a
+     `hooks.before` plugin that refuses `/callback/:id/oauth-proxy` and
+     `/oauth-proxy-callback` (redirect to
+     `/sign-in?error=proxy_hand_back_refused`) before the plugin runs. Its
+     own sign-ins and the proxying for previews still work.
+   - The plugin has no option to keep its hand-back endpoint off, so a
+     `fixed` deployment refuses hand-backs outright. Previews hold the proxy
+     secret, but production never accepts anything sealed with it.
+   - `OAUTH_PROXY_SECRET` is required with `OAUTH_PROXY_URL` and must differ
+     from `BETTER_AUTH_SECRET`; otherwise the proxy stays off and an error is
+     logged.
+   - Implicit linking: `account.accountLinking.disableImplicitLinking: true`
+     (the stakeholder chose option A). A Google sign-in for an existing
+     member's email from another Google account (`sub`) is refused with
+     `account_not_linked`, and the sign-in page explains it. A re-created
+     Google account needs the owner to remove and re-invite the person.
+2. **Hand-back bound to the browser (stakeholder: do it if clean).** On a
+   preview, a `hooks.before` plugin unseals the hand-back with
+   `OAUTH_PROXY_SECRET` and requires its state to equal the signed `state`
+   cookie that Better Auth sets in the browser starting sign-in (database
+   state strategy). Otherwise it redirects to `/sign-in?error=state_mismatch`.
+   There is no fork or patch. It uses the public `symmetricDecrypt` and the
+   plugin's key derivation (HKDF-SHA256, purpose `oauth-proxy-profile`),
+   re-derived with `node:crypto`. If a later Better Auth changes that, every
+   hand-back is refused (fails closed) and check:auth fails.
+3. **Deployment Protection:** no code change. Previews stay for the
+   stakeholder only, with protection on; it goes in #16's docs.
+4. **`trustedOrigins()` checks (minor).** check:auth now asserts:
+   - a preview trusts exactly its own two addresses and the proxy;
+   - no wildcard in any environment, except `localhost:*` outside
+     production;
+   - localhost only outside production;
+   - production with the proxy off trusts nothing extra;
+   - the running instance doesn't trust an arbitrary `*.vercel.app`.
+
+### Verified (review fixes)
+- typecheck, lint, smoke (386 checks) and `env -u DATABASE_URL npm run build`
+  pass.
+- check:auth, new main-process checks:
+  - the trusted-origins assertions above;
+  - the owner's email from another `sub` is refused and not linked, while
+    the same `sub` still signs in.
+- check:auth proxy child process (22 checks): three deployments (fixed,
+  preview, production-as-proxy), each with its own PGlite, and Google's
+  token endpoint stubbed:
+  - the roles;
+  - the preview flow completes through the fixed deployment;
+  - the hand-back opened in a browser with no cookies, or with its own
+    sign-in's state cookie, is refused and creates no session;
+  - a forged hand-back is otherwise valid (a preview accepts it with the
+    owner's own `sub`; with another `sub` it gets `account_not_linked`);
+  - the fixed deployment and production refuse forged hand-backs on both
+    paths, writing no user or session;
+  - their own sign-ins still complete directly.
+- Mutations, each applied by hand, now fail `npm run check:auth`:
+  - no hand-back refusal;
+  - `https://*.vercel.app` trusted;
+  - localhost trusted in production;
+  - production not `fixed`;
+  - no browser binding;
+  - implicit linking back on.
+- By hand on `next start`: a forged hand-back (built from
+  `OAUTH_PROXY_SECRET` only) to a server with `VERCEL_ENV=production` got
+  `302 /sign-in?error=proxy_hand_back_refused` and no cookie. The same
+  server configured as a receiver accepted it and set a session cookie, so
+  the forgery is real.
+- Real browser, two `next start` servers on different sites (preview on
+  `localhost:3105`, fixed on `127.0.0.1:3106`), Playwright:
+  - Google was sent to the fixed deployment and the person was signed in on
+    the preview, so the SameSite=Lax state cookie survives the cross-site
+    redirect chain;
+  - a fresh hand-back URL opened in another browser got
+    `error=state_mismatch` and no session, then still worked in the
+    starting browser;
+  - the fixed deployment refused it.
+
 ## Open
-- **Hand-back is not bound to the browser.** The plugin's last step skips
-  the state cookie check, and with a database the state lives in the
-  `verification` table. A hand-back URL opened in another browser within 60
-  seconds, before it is used, signs that browser in. The URL only exists in
-  the signing-in person's own redirect chain. This is the library's design;
-  noted, not worked around.
-- **Vercel Deployment Protection** on previews would stop family members
-  without Vercel access from opening a preview at all. Not code; for #16's
-  checklist.
+- **Residual:** whoever holds `OAUTH_PROXY_SECRET` (the Preview
+  environment) can, from their own browser, forge a hand-back to a preview
+  and sign in there as a member whose Google `sub` they know, or as the
+  owner email before an owner exists. Previews only, never production. They
+  could also make the fixed deployment forward a victim's Google profile to
+  an address of their choosing, but only if the victim completes a Google
+  sign-in from a link the attacker crafted. Both need the Preview secrets.
 - `HOUSEHOLD_PASSCODE` is still described in `.env.example`, `README.md`
   and `docs/ARCHITECTURE.md`. Left for #16, which owns the docs.
 

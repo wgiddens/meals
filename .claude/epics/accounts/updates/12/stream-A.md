@@ -20,3 +20,7 @@ Every stream in `12-analysis.md`, done in order by one implementer.
   sign out) and `src/app/account/actions.ts` (`updateDisplayNameAction`,
   `signOutAction`, both starting with `await requireMember()`).
 - Checks and hand checks: see progress.md.
+- Review fixes (PR #24): hand-backs refused on the fixed deployment and
+  production; `OAUTH_PROXY_SECRET` required and distinct; hand-backs bound to
+  the starting browser; implicit account linking off; check:auth covers
+  trusted origins, linking and the proxy end to end. See progress.md.
