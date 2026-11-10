@@ -2,7 +2,7 @@
 name: accounts
 status: in-progress
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T20:58:45Z
+updated: 2026-11-10T21:07:31Z
 progress: 25%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
@@ -52,14 +52,14 @@ takes effect on their very next request, as the PRD requires. At family
 scale the extra query is negligible.
 
 ### Two layers of gate, as today
-- `src/proxy.ts` keeps its current shape: a cheap check for the session
-  cookie, redirecting signed-out page requests to `/sign-in?next=…` and
-  answering 401 to `/api/*`. Exempt: `/sign-in`, `/api/auth/*`, `/api/mcp`,
-  `/.well-known/*`.
-- Server code does the real check. `requireMember()` replaces
-  `requireHousehold()` in every Server Action and API route, and
-  `requireOwner()` guards family management. The proxy is a convenience;
-  these functions are the security boundary.
+- `src/proxy.ts` does a full session lookup on every gated request,
+  redirecting signed-out page requests to `/sign-in?next=…` and answering 401
+  to `/api/*`. Pages rely on it, so a cookie-presence check is not enough
+  (Will's decision during #11). Exempt: `/sign-in`, `/api/auth/*`,
+  `/api/mcp`, `/.well-known/*`.
+- Server code checks again. `requireMember()` replaces `requireHousehold()`
+  in every Server Action and API route, and `requireOwner()` guards family
+  management.
 
 ### One family, modelled minimally
 - Better Auth's `user` table gains a `role` column (`owner` | `member`), declared server-only so no
