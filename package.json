@@ -14,7 +14,8 @@
     "db:seed": "tsx --tsconfig tsconfig.json src/db/seed.ts",
     "check:import": "tsx --tsconfig tsconfig.json scripts/check-import.ts",
     "check:auth": "tsx --tsconfig tsconfig.json scripts/check-auth.ts",
-    "smoke": "npm run check:import && npm run check:auth && tsx --tsconfig tsconfig.json scripts/smoke.ts"
+    "check:accounts": "tsx --tsconfig tsconfig.json scripts/check-accounts.ts",
+    "smoke": "npm run check:import && npm run check:auth && npm run check:accounts && tsx --tsconfig tsconfig.json scripts/smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",
