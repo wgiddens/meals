@@ -275,3 +275,5 @@ Add one line per lesson: date, what happened, and the rule it changed.
   plus a "review done" comment, so the review is visible on GitHub.
 - 2026-11-10: Minor review findings that can wait go into the next suitable
   task's spec, not a separate follow-up PR (#9's went into #10, #11 and #12).
+- 2026-11-10: Will wants every PR reviewed by a review chat before it is
+  marked ready, docs-only PRs included (first case: this skill's own PR).
