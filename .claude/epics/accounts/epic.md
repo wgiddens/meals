@@ -2,7 +2,7 @@
 name: accounts
 status: backlog
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T18:13:54Z
+updated: 2026-11-10T18:51:40Z
 progress: 0%
 prd: .claude/prds/accounts.md
 github: (will be set on sync)
@@ -219,3 +219,18 @@ Eight tasks. Sizes: tasks 1, 2 and 3 are medium; 4, 5 and 6 are small to
 medium; 7 and 8 are small. The critical path is 1 → 2 → 3 → 4 → 5 → 8;
 tasks 6 and 7 run beside 4 and 5. The one step that needs the repo owner is
 creating the Google OAuth client and setting the Vercel variables.
+
+## Tasks Created
+- [ ] 001.md - Sign-in foundation with Better Auth (parallel: false)
+- [ ] 002.md - Family rules: invitations, roles and invite-only sign-up (parallel: false)
+- [ ] 003.md - Member gate: replace the household passcode (parallel: false)
+- [ ] 004.md - Sign-in page with Google, sign out and My account (parallel: true)
+- [ ] 005.md - Passkeys: add, remove and sign in (parallel: true)
+- [ ] 006.md - Family page: members, invitations and owner controls (parallel: true)
+- [ ] 007.md - Automated checks for the account rules (parallel: true)
+- [ ] 008.md - Documentation, deployment setup and production check (parallel: false)
+
+Total tasks: 8
+Parallel tasks: 4
+Sequential tasks: 4
+Estimated total effort: 38 hours
