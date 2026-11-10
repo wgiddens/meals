@@ -187,7 +187,7 @@ Add sync marker to local files to prevent duplicate comments:
 
 ## Closing an Issue
 
-> **In this repo:** the orchestrator skill runs this after Will merges the task's PR, with the changes it lists.
+> **In this repo:** the orchestrator skill runs this after the stakeholder merges the task's PR, with the changes it lists.
 
 **Trigger**: User marks a task complete.
 
@@ -216,7 +216,7 @@ bash <skill_path>/references/scripts/neon-branch.sh cleanup <epic_name> --issue 
 
 ## Merging an Epic
 
-> **In this repo:** don't merge locally or push to `main`. The orchestrator skill opens a final draft PR from `epic/<name>` into `main`, and Will merges it.
+> **In this repo:** don't merge locally or push to `main`. The orchestrator skill opens a final draft PR from `epic/<name>` into `main`, and the stakeholder merges it.
 
 **Trigger**: User wants to merge a completed epic back to main.
 

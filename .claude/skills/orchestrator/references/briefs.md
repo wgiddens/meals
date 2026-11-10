@@ -12,9 +12,9 @@ Fill in the `<placeholders>` and pass the brief as `claude-code-remote:create_se
 
 > You are implementing GitHub issue wgiddens/meals#<N>, "<title>", in the
 > <epic> epic (wgiddens/meals#<epic N>). An orchestrator session (`<my session
-> id>`) coordinates this work for the stakeholder, Will. You implement the
+> id>`) coordinates this work for the stakeholder. You implement the
 > task and open a draft PR. A separate review chat checks it, the
-> orchestrator marks it ready, and Will merges it.
+> orchestrator marks it ready, and the stakeholder merges it.
 >
 > **Read first:** `CLAUDE.md` and `AGENTS.md`, then `docs/PRODUCT.md`; the
 > task spec `.claude/epics/<epic>/<N>.md`, whose acceptance criteria are the
@@ -23,6 +23,7 @@ Fill in the `<placeholders>` and pass the brief as `claude-code-remote:create_se
 > **Work:**
 > - Use branch `claude/issue-<N>-<slug>`, based on `epic/<name>`.
 > - Commit as `Issue #<N>: …`. Never use `--force`.
+> - Work every stream in the analysis, in order.
 > - Stay in the files the spec lists.
 > - Update `.claude/epics/<epic>/updates/<N>/progress.md` and `stream-A.md`
 >   as you go. Don't edit `<N>.md` or `execution.md`.
@@ -59,7 +60,7 @@ Fill in the `<placeholders>` and pass the brief as `claude-code-remote:create_se
 
 > You are reviewing PR wgiddens/meals#<PR> (issue #<N>, "<title>"). It merges
 > `claude/issue-<N>-<slug>` into `epic/<name>`. An orchestrator session (`<my
-> session id>`) coordinates this work for the stakeholder, Will. Don't
+> session id>`) coordinates this work for the stakeholder. Don't
 > commit, push, approve, merge or change the PR's draft state. Your only
 > writes are the two PR comments under "Report back".
 >
