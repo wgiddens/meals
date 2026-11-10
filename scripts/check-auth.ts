@@ -115,6 +115,7 @@ async function proxyChild() {
     BETTER_AUTH_URL: FIXED,
     OAUTH_PROXY_URL: FIXED,
     OAUTH_PROXY_SECRET: PROXY_SECRET,
+    OAUTH_PROXY_PREVIEW_PATTERN: "https://meals-*-fam.vercel.app",
     VERCEL_ENV: "preview",
     VERCEL_URL: "meals-abc123-fam.vercel.app",
     VERCEL_BRANCH_URL: PREVIEW_HOST,
@@ -155,9 +156,11 @@ async function proxyChild() {
 
   // Google: the code is base64url JSON {email, nonce}, chosen below.
   const realFetch = globalThis.fetch;
+  let tokenExchanges = 0;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!url.startsWith("https://oauth2.googleapis.com/token")) return realFetch(input, init);
+    tokenExchanges++;
     const code = new URLSearchParams(String(init?.body)).get("code") ?? "";
     const { email, nonce } = JSON.parse(Buffer.from(code, "base64url").toString());
     const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -294,6 +297,73 @@ async function proxyChild() {
         `${name} refuses a forged hand-back on ${apiPath} and signs no one in (${res.status} ${res.headers.get("location")})`,
       );
     }
+  }
+
+  // A state package sealed with the proxy secret for a foreign destination,
+  // with the attacker's own PKCE verifier: the fixed deployment and
+  // production refuse it before exchanging the code with Google, so no
+  // profile is sealed or sent anywhere. Also for a foreign error address.
+  const forgePackage = async (callbackURL: string, errorURL?: string) => {
+    const oauthState = `forged-${Math.random().toString(36).slice(2)}`;
+    const stateData = { callbackURL, errorURL, codeVerifier: "attacker-chosen-verifier-0123456789abcdef0123", expiresAt: Date.now() + 600_000, oauthState };
+    const stateCookie = await symmetricEncrypt({ key: proxyKey("oauth-proxy-state"), data: JSON.stringify(stateData) });
+    return symmetricEncrypt({ key: proxyKey("oauth-proxy-package"), data: JSON.stringify({ state: oauthState, stateCookie, isOAuthProxy: true }) });
+  };
+  const evilHandBack = "https://evil.example/api/auth/callback/google/oauth-proxy?callbackURL=%2F";
+  const legitHandBack = `${PREVIEW}/api/auth/callback/google/oauth-proxy?callbackURL=%2F`;
+  for (const [name, base] of [["fixed", FIXED], ["production", PROD]] as [Name, string][]) {
+    for (const [label, pkg] of [
+      ["a foreign destination", await forgePackage(evilHandBack)],
+      ["a look-alike destination", await forgePackage("https://meals-x.evil.example-fam.vercel.app/api/auth/callback/google/oauth-proxy")],
+      ["a foreign error address", await forgePackage(legitHandBack, "https://evil.example/err")],
+    ] as const) {
+      const exchangesBefore = tokenExchanges;
+      const code = Buffer.from(JSON.stringify({ email: OWNER_EMAIL, nonce: "" })).toString("base64url");
+      const res = await call(name, `${base}/api/auth/callback/google?code=${code}&state=${encodeURIComponent(pkg)}`);
+      const location = res.headers.get("location") ?? "";
+      assert(
+        location === "/sign-in?error=proxy_destination_refused" && !location.includes("profile=") && tokenExchanges === exchangesBefore,
+        `${name} refuses a proxied sign-in for ${label}, before any Google exchange (${res.status} ${location})`,
+      );
+    }
+  }
+  // A matching preview destination is still served: the forged package above
+  // is refused only for its destination. (The full preview flow, through the
+  // real browser state, is checked at the top.)
+  {
+    const code = Buffer.from(JSON.stringify({ email: OWNER_EMAIL, nonce: "" })).toString("base64url");
+    const res = await call("fixed", `${FIXED}/api/auth/callback/google?code=${code}&state=${encodeURIComponent(await forgePackage(legitHandBack))}`);
+    assert(
+      (res.headers.get("location") ?? "").startsWith(`${PREVIEW}/api/auth/callback/google/oauth-proxy?`),
+      "the fixed deployment still hands back to a preview matching OAUTH_PROXY_PREVIEW_PATTERN",
+    );
+  }
+  // With no preview pattern, the fixed deployment hands back nowhere else.
+  {
+    applyEnv("fixed");
+    delete process.env.OAUTH_PROXY_PREVIEW_PATTERN;
+    const { proxyDestinationAllowed } = await import("@/lib/auth");
+    assert(
+      !proxyDestinationAllowed(legitHandBack, process.env) && proxyDestinationAllowed(`${FIXED}/x`, process.env),
+      "with OAUTH_PROXY_PREVIEW_PATTERN unset, only the fixed deployment itself is a destination",
+    );
+    process.env.OAUTH_PROXY_PREVIEW_PATTERN = preview.OAUTH_PROXY_PREVIEW_PATTERN;
+  }
+
+  // Google ID-token sign-in is off everywhere.
+  for (const [name, base] of [["preview", PREVIEW], ["fixed", FIXED], ["production", PROD]] as [Name, string][]) {
+    const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const idToken = `${b64({ alg: "RS256", kid: "k" })}.${b64({ iss: "https://accounts.google.com", aud: preview.GOOGLE_CLIENT_ID, sub: `sub-${OWNER_EMAIL}`, email: OWNER_EMAIL, email_verified: true })}.sig`;
+    const res = await call(name, `${base}/api/auth/sign-in/social`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: base },
+      body: JSON.stringify({ provider: "google", idToken: { token: idToken } }),
+    }, "idtoken");
+    const body = (await res.json().catch(() => null)) as { code?: string } | null;
+    assert(
+      res.status === 404 && body?.code === "ID_TOKEN_NOT_SUPPORTED" && !res.headers.getSetCookie().some((c) => c.includes("session_token")),
+      `${name}: Google ID-token sign-in is refused (${res.status} ${body?.code})`,
+    );
   }
 
   // Each deployment's own sign-in still goes straight through.
@@ -987,6 +1057,46 @@ async function main() {
     !trustCtx.isTrustedOrigin("https://evil.vercel.app") && !trustCtx.isTrustedOrigin("https://anything.vercel.app/x"),
     "the running instance does not trust an arbitrary *.vercel.app address",
   );
+
+  // The fixed deployment's allowed hand-back destinations.
+  const { previewOriginPattern, proxyDestinationAllowed } = await import("@/lib/auth");
+  for (const bad of [
+    undefined,
+    "",
+    "https://*.vercel.app",
+    "https://meals-*.vercel.app",
+    "https://*-fam.vercel.app",
+    "http://meals-*-fam.vercel.app",
+    "https://meals-*-fam.vercel.app/",
+    "https://meals-*-fam.vercel.app:443",
+    "https://meals-*-*-fam.vercel.app",
+    "https://meals-fam.vercel.app",
+    "https://a.meals-*-fam.vercel.app",
+    "https://meals-*-fam",
+  ]) {
+    assert(previewOriginPattern({ OAUTH_PROXY_PREVIEW_PATTERN: bad }) === null, `preview pattern ${JSON.stringify(bad)} is refused`);
+  }
+  const patternEnv = {
+    BETTER_AUTH_URL: "https://meals-git-epic-accounts-fam.vercel.app",
+    OAUTH_PROXY_URL: "https://meals-git-epic-accounts-fam.vercel.app",
+    OAUTH_PROXY_PREVIEW_PATTERN: "https://meals-*-fam.vercel.app",
+  };
+  for (const good of ["https://meals-abc123-fam.vercel.app/api/auth/callback/google/oauth-proxy?x=1", "https://meals-git-feature-fam.vercel.app", "/sign-in", "https://meals-git-epic-accounts-fam.vercel.app/x"]) {
+    assert(proxyDestinationAllowed(good, patternEnv), `the fixed deployment may hand back to ${good}`);
+  }
+  for (const bad of [
+    "https://evil.example/x",
+    "https://meals-x.evil.example-fam.vercel.app",
+    "https://meals-abc-fam.vercel.app.evil.example",
+    "http://meals-abc-fam.vercel.app",
+    "https://other-abc-fam.vercel.app",
+    "https://user@meals-abc-fam.vercel.app",
+    "//evil.example",
+    "javascript:alert(1)",
+    "",
+  ]) {
+    assert(!proxyDestinationAllowed(bad, patternEnv), `the fixed deployment refuses to hand back to ${JSON.stringify(bad)}`);
+  }
 
   // The OAuth proxy end to end, in its own process (it needs three
   // deployments, each with its own instance and database).

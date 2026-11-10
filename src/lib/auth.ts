@@ -172,6 +172,118 @@ function refuseProxyHandBacks(): BetterAuthPlugin {
 }
 
 /**
+ * A key for one of the plugin's ciphertexts, derived exactly as the installed
+ * plugin derives it from a string `secret`: HKDF-SHA256 with Better Auth's
+ * OAuth encryption salt and the purpose. If a later Better Auth changes this,
+ * unsealing fails and the guards below refuse (fail closed); `npm run
+ * check:auth` reports it.
+ */
+function proxyKey(proxySecret: string, purpose: string): string {
+  return Buffer.from(
+    hkdfSync("sha256", proxySecret, "better-auth:oauth-encryption:v1", `better-auth:${purpose}:v1`, 32),
+  ).toString("hex");
+}
+
+/**
+ * Where the fixed deployment may hand a sign-in back to, besides itself:
+ * OAUTH_PROXY_PREVIEW_PATTERN, one pattern for this project's preview
+ * addresses such as `https://meals-*-myteam.vercel.app`. Kept narrow on
+ * purpose, and refused (null) otherwise:
+ *   - https, a host and nothing else (no port, path, query or user);
+ *   - exactly one `*`, inside the first label of the host, with fixed text on
+ *     both sides of it in that label (so `https://*.vercel.app` and
+ *     `https://meals-*.vercel.app` are refused);
+ *   - the `*` matches letters, digits and hyphens only, never a dot.
+ * Unset or invalid, the fixed deployment hands back to nowhere but itself, so
+ * preview sign-in fails closed.
+ */
+export function previewOriginPattern(env: Env = process.env): RegExp | null {
+  const raw = env.OAUTH_PROXY_PREVIEW_PATTERN?.trim().toLowerCase();
+  const match = raw ? /^https:\/\/([a-z0-9-]+)\*([a-z0-9-]+)((?:\.[a-z0-9-]+)+)$/.exec(raw) : null;
+  if (!match) return null;
+  const [, before, after, rest] = match;
+  const escape = (text: string) => text.replace(/[.-]/g, "\\$&");
+  return new RegExp(`^https://${escape(before)}[a-z0-9-]+${escape(after)}${escape(rest)}$`);
+}
+
+/**
+ * Whether the fixed deployment may send a sign-in (or its error) to `url`:
+ * a safe path on itself, its own origin (BETTER_AUTH_URL or OAUTH_PROXY_URL),
+ * or a preview origin matching OAUTH_PROXY_PREVIEW_PATTERN.
+ */
+export function proxyDestinationAllowed(url: unknown, env: Env = process.env): boolean {
+  if (typeof url !== "string" || url.length === 0) return false;
+  if (url.startsWith("/")) return !url.startsWith("//") && !url.includes("\\");
+  let origin: string;
+  try {
+    const parsed = new URL(url);
+    if (parsed.username || parsed.password) return false;
+    origin = parsed.origin;
+  } catch {
+    return false;
+  }
+  if (origin === originOf(env.BETTER_AUTH_URL) || origin === oauthProxyOrigin(env)) return true;
+  return previewOriginPattern(env)?.test(origin) ?? false;
+}
+
+/**
+ * On the fixed deployment: before the plugin exchanges a proxied sign-in's
+ * code with Google and seals the profile, check where it would send it. The
+ * plugin takes the destination from the state package (sealed with
+ * OAUTH_PROXY_SECRET) and never checks it, so whoever holds that secret could
+ * otherwise have a victim's Google profile, tokens included, delivered to any
+ * address. Refused unless the destination (and the error address) pass
+ * proxyDestinationAllowed(). Callbacks that are not proxy packages (this
+ * deployment's own sign-ins) are left to Better Auth.
+ */
+function guardProxyDestinations(proxySecret: string, env: Env): BetterAuthPlugin {
+  const packageKey = proxyKey(proxySecret, "oauth-proxy-package");
+  const stateKey = proxyKey(proxySecret, "oauth-proxy-state");
+  const refuse = (ctx: { redirect: (url: string) => unknown; context: { logger: { warn: (m: string) => void } } }) => {
+    ctx.context.logger.warn("OAuth proxy refused a sign-in for a destination outside this project");
+    return ctx.redirect("/sign-in?error=proxy_destination_refused");
+  };
+  return {
+    id: "meals-guard-oauth-proxy-destinations",
+    hooks: {
+      before: [
+        {
+          matcher: (context) => context.path === "/callback/:id" || /^\/callback\/[^/]+\/?$/.test(context.path ?? ""),
+          handler: createAuthMiddleware(async (ctx) => {
+            const fromQuery: unknown = ctx.query?.state;
+            const fromBody: unknown = (ctx.body as { state?: unknown } | undefined)?.state;
+            const state = typeof fromQuery === "string" ? fromQuery : fromBody;
+            if (typeof state !== "string") return;
+            let statePackage: { isOAuthProxy?: unknown; stateCookie?: unknown };
+            try {
+              statePackage = JSON.parse(await symmetricDecrypt({ key: packageKey, data: state }));
+            } catch {
+              return; // not a proxy package: this deployment's own sign-in
+            }
+            let destination: unknown;
+            let errorURL: unknown;
+            try {
+              if (typeof statePackage.stateCookie !== "string") throw new Error("no state");
+              const stateData = JSON.parse(await symmetricDecrypt({ key: stateKey, data: statePackage.stateCookie })) as {
+                callbackURL?: unknown;
+                errorURL?: unknown;
+              };
+              destination = stateData.callbackURL;
+              errorURL = stateData.errorURL;
+            } catch {
+              throw refuse(ctx);
+            }
+            if (!proxyDestinationAllowed(destination, env) || (errorURL !== undefined && !proxyDestinationAllowed(errorURL, env))) {
+              throw refuse(ctx);
+            }
+          }),
+        },
+      ],
+    },
+  };
+}
+
+/**
  * Binds a hand-back to the browser that started the sign-in. Starting a
  * Google sign-in stores its OAuth state in the database and sets a signed
  * `state` cookie holding the same value in that browser (Better Auth's
@@ -180,21 +292,10 @@ function refuseProxyHandBacks(): BetterAuthPlugin {
  * seconds would sign that browser in. Here the hand-back is unsealed and its
  * state must equal the signed cookie, or it is refused before the plugin runs.
  *
- * The key is derived exactly as the installed plugin derives it from a string
- * `secret` (HKDF-SHA256, Better Auth's "oauth-proxy-profile" purpose). If a
- * later Better Auth changes that, unsealing fails, every hand-back is
- * refused (fails closed) and `npm run check:auth` reports it.
+ * The key comes from proxyKey() ("oauth-proxy-profile" purpose).
  */
 function bindProxyHandBacksToBrowser(proxySecret: string): BetterAuthPlugin {
-  const profileKey = Buffer.from(
-    hkdfSync(
-      "sha256",
-      proxySecret,
-      "better-auth:oauth-encryption:v1",
-      "better-auth:oauth-proxy-profile:v1",
-      32,
-    ),
-  ).toString("hex");
+  const profileKey = proxyKey(proxySecret, "oauth-proxy-profile");
   return {
     id: "meals-bind-oauth-proxy-hand-back",
     hooks: {
@@ -252,7 +353,7 @@ function proxyPlugins(env: Env): BetterAuthPlugin[] {
     secret: oauthProxySecret(env)!,
   });
   return role === "fixed"
-    ? [refuseProxyHandBacks(), proxy]
+    ? [guardProxyDestinations(oauthProxySecret(env)!, env), refuseProxyHandBacks(), proxy]
     : [bindProxyHandBacksToBrowser(oauthProxySecret(env)!), proxy];
 }
 
@@ -289,7 +390,10 @@ function createAuth(db: Db) {
         disableImplicitLinking: true,
       },
     },
-    socialProviders: google ? { google } : {},
+    // Google sign-in only through the redirect flow. The id_token route
+    // (`/sign-in/social` with `idToken`) would accept a Google ID token
+    // obtained anywhere, for up to an hour, nonce optional.
+    socialProviders: google ? { google: { ...google, disableIdTokenSignIn: true } } : {},
     user: {
       additionalFields: {
         // Server-only: `input: false` makes every client endpoint refuse a

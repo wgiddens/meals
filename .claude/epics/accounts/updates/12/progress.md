@@ -180,6 +180,76 @@ Files touched are only those the spec lists. Draft PR #24 into `epic/accounts`.
     starting browser;
   - the fixed deployment refused it.
 
+## Re-check fixes (re-check of PR #24 at eaa3742)
+Finding 1: the fixed deployment (and production acting as the proxy)
+forwarded a proxied sign-in to whatever `callbackURL` was sealed in the
+state package. The reviewer sent a package sealed for `https://evil.example`
+with an attacker-chosen PKCE verifier and got a 302 to evil.example carrying
+an unsealable profile. Production also accepted Google ID-token sign-in.
+- **(i)** The Google provider now has `disableIdTokenSignIn: true`, so
+  `/sign-in/social` with `idToken` gets 404 `ID_TOKEN_NOT_SUPPORTED`.
+- **(ii)** A fixed deployment runs `guardProxyDestinations` as a
+  `hooks.before` on `/callback/:id`, ahead of the plugin. It unseals the
+  state package and its state with `OAUTH_PROXY_SECRET`. The destination
+  and the error address must be one of:
+  - a safe path on itself;
+  - its own origin (`BETTER_AUTH_URL` or `OAUTH_PROXY_URL`);
+  - an origin matching `OAUTH_PROXY_PREVIEW_PATTERN`.
+
+  Otherwise it redirects to `/sign-in?error=proxy_destination_refused`
+  before any Google exchange. If the package unseals but its state doesn't,
+  that is refused too. Callbacks that aren't proxy packages (its own
+  sign-ins) are left to Better Auth.
+- **`OAUTH_PROXY_PREVIEW_PATTERN`** (new, documented in `.env.example`) is
+  one pattern such as `https://meals-*-<team>.vercel.app`:
+  - https only, with a host only;
+  - exactly one `*`, inside the first host label, with fixed text on both
+    sides;
+  - `*` matches `[a-z0-9-]+` only, never a dot.
+
+  Anything else, `https://*.vercel.app` and `https://meals-*.vercel.app`
+  included, is treated as unset. Unset, the fixed deployment hands back to
+  nothing but itself.
+- (iii) Whether production should be the proxy, and whether secrets and the
+  Google client are shared, is with the stakeholder. The deployment model and
+  the PR's Vercel instructions are unchanged until then.
+
+### Verified (re-check fixes)
+- typecheck, lint, smoke (422 checks) and `env -u DATABASE_URL npm run build`
+  pass.
+- check:auth main process:
+  - 12 refused patterns (unset, empty, `https://*.vercel.app`,
+    `https://meals-*.vercel.app`, `https://*-fam.vercel.app`, http, trailing
+    slash, port, two stars, no star, star outside the first label, no
+    suffix);
+  - allowed and refused destinations: evil.example, a look-alike with a dot
+    inside the wildcard, a `.evil.example` suffix, http, another project, a
+    userinfo trick, `//evil.example`, `javascript:`, empty.
+- check:auth proxy child process:
+  - forged packages with an attacker PKCE verifier are refused before any
+    Google token exchange, on the fixed deployment and on production, for a
+    foreign destination, a look-alike destination and a foreign error
+    address;
+  - a matching preview destination is still handed back;
+  - with the pattern unset, only the fixed deployment itself is a
+    destination;
+  - ID-token sign-in is refused on the preview, the fixed deployment and
+    production;
+  - every earlier check still passes.
+- Mutations: removing the destination guard makes check:auth fail; the
+  fixed deployment then sends `302 https://evil.example/...&profile=…`.
+  Removing `disableIdTokenSignIn` makes it fail too.
+- By hand on `next start` (`VERCEL_ENV=production`, pattern set, Google's
+  token endpoint stubbed):
+  - a package sealed for evil.example gets
+    `302 /sign-in?error=proxy_destination_refused`;
+  - the same package for `https://meals-abc123-fam.vercel.app` gets its
+    hand-back;
+  - `/sign-in/social` with an `idToken` gets 404 `ID_TOKEN_NOT_SUPPORTED`.
+- Not re-run: the two-site browser test from the first fixes. Its preview
+  ran on `http://localhost`, which an https-only pattern cannot match. The
+  same flow, with a matching preview, is covered by the check:auth child.
+
 ## Open
 - **Residual:** whoever holds `OAUTH_PROXY_SECRET` (the Preview
   environment) can, from their own browser, forge a hand-back to a preview
@@ -187,7 +257,13 @@ Files touched are only those the spec lists. Draft PR #24 into `epic/accounts`.
   owner email before an owner exists. Previews only, never production. They
   could also make the fixed deployment forward a victim's Google profile to
   an address of their choosing, but only if the victim completes a Google
-  sign-in from a link the attacker crafted. Both need the Preview secrets.
+  sign-in from a link the attacker crafted. The second is now closed: the
+  fixed deployment only hands back to itself or to addresses matching
+  `OAUTH_PROXY_PREVIEW_PATTERN`. The first still needs the Preview secrets.
+- Vercel lets any team name a project, so a project named like
+  `meals-x-<team>` in another team could have a production domain matching
+  the preview pattern. Whether Vercel reserves team-slug suffixes is not
+  verified. The pattern is still far narrower than `*.vercel.app`.
 - `HOUSEHOLD_PASSCODE` is still described in `.env.example`, `README.md`
   and `docs/ARCHITECTURE.md`. Left for #16, which owns the docs.
 
