@@ -50,6 +50,15 @@ Stream A in `15-analysis.md` is implemented on
 3. 8.8 compares the audit count before and after the takeover attempt
    instead of expecting 1.
 4. The PR body no longer says only two files change.
+5. (Re-check of 1776308) The owner-only Server Action rule in
+   `scripts/smoke.ts` now covers every `"use server"` file under
+   `src/app/family/`, not just `actions.ts`. Fixtures under two filenames
+   (`actions.ts`, `members/invite-actions.ts`) and two outside paths
+   (`src/app/familyx/`, `src/app/plan/`). Checked: a temporary
+   `src/app/family/members/invite-actions.ts` with `requireMember()` makes
+   smoke exit 1, and with `requireOwner()` exit 0. Merged with the current
+   `epic/accounts` (PR #22 is in) in a scratch worktree, smoke passes with
+   the 13 real actions, and there are no conflicts.
 - `check:accounts` now runs 62 assertions; typecheck, lint, smoke,
   check:accounts and `env -u DATABASE_URL` build pass.
 
