@@ -1,6 +1,8 @@
-import { betterAuth } from "better-auth";
+import { hkdfSync } from "node:crypto";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
+import { symmetricDecrypt } from "better-auth/crypto";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
 import { getDb, schema, type Db } from "@/db";
 import { userRoles, type Role } from "@/db/schema";
@@ -79,6 +81,8 @@ export function oauthProxyOrigin(env: Env = process.env): string | null {
  * and only a deployment holding the shared secret can seal one. That
  * deployment first checks the address against this list, so the return trip
  * can only ever lead back to the deployment where sign-in started.
+ * (Whoever holds OAUTH_PROXY_SECRET can seal one too; that is why only
+ * previews accept hand-backs at all, see oauthProxyRole().)
  */
 export function trustedOrigins(env: Env = process.env): string[] {
   const origins = new Set<string>();
@@ -98,25 +102,158 @@ export function trustedOrigins(env: Env = process.env): string[] {
 }
 
 /**
+ * How this deployment takes part in Google sign-in through the OAuth proxy:
+ *
+ *   "off"       OAUTH_PROXY_URL is unset (or OAUTH_PROXY_SECRET is missing,
+ *               see below): Google redirects straight back here.
+ *   "fixed"     this is the fixed address Google redirects to, or production.
+ *               It exchanges codes for proxied sign-ins and hands them back,
+ *               and runs its own sign-ins directly, but it REFUSES every
+ *               hand-back (see refuseProxyHandBacks()).
+ *   "receiver"  a preview (or a local run): its Google sign-ins go through
+ *               the fixed address and come back as a sealed hand-back.
+ *
+ * Decided from the environment only, never from the request's host: on
+ * Vercel, VERCEL_ENV and VERCEL_BRANCH_URL are set per deployment and a
+ * request cannot change them. Production is always "fixed" so that it can
+ * never accept a hand-back, which anyone holding the preview environment's
+ * proxy secret could forge.
+ */
+export type OAuthProxyRole = "off" | "fixed" | "receiver";
+
+export function oauthProxyRole(env: Env = process.env): OAuthProxyRole {
+  const proxy = oauthProxyOrigin(env);
+  if (!proxy || !oauthProxySecret(env)) return "off";
+  if (env.VERCEL_ENV === "production" || originOf(env.VERCEL_BRANCH_URL) === proxy) return "fixed";
+  return "receiver";
+}
+
+/**
+ * The secret that seals the proxy's hand-offs. It must be set, and must not be
+ * BETTER_AUTH_SECRET: every deployment taking part shares it, previews
+ * included, so it must never be a secret production relies on for anything
+ * else. Without a usable one the proxy stays off and previews fail closed
+ * (Google refuses their unregistered redirect address).
+ */
+export function oauthProxySecret(env: Env = process.env): string | null {
+  const secret = env.OAUTH_PROXY_SECRET?.trim();
+  if (!secret || secret === env.BETTER_AUTH_SECRET?.trim()) return null;
+  return secret;
+}
+
+/**
+ * The plugin's hand-back endpoints. A hand-back carries a Google profile
+ * sealed with OAUTH_PROXY_SECRET and signs its holder in with no Google step,
+ * so only a receiver may accept one.
+ */
+const HAND_BACK_PATHS = new Set(["/callback/:id/oauth-proxy", "/oauth-proxy-callback"]);
+const HAND_BACK_PATH = /^\/callback\/[^/]+\/oauth-proxy\/?$|^\/oauth-proxy-callback\/?$/;
+
+function isHandBackPath(path: string | undefined): boolean {
+  return HAND_BACK_PATHS.has(path ?? "") || HAND_BACK_PATH.test(path ?? "");
+}
+
+/** Refuses every hand-back before the plugin's endpoint can run. */
+function refuseProxyHandBacks(): BetterAuthPlugin {
+  return {
+    id: "meals-refuse-oauth-proxy-hand-back",
+    hooks: {
+      before: [
+        {
+          matcher: (context) => isHandBackPath(context.path),
+          handler: createAuthMiddleware(async (ctx) => {
+            ctx.context.logger.warn("OAuth proxy hand-back refused on the fixed deployment");
+            throw ctx.redirect("/sign-in?error=proxy_hand_back_refused");
+          }),
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Binds a hand-back to the browser that started the sign-in. Starting a
+ * Google sign-in stores its OAuth state in the database and sets a signed
+ * `state` cookie holding the same value in that browser (Better Auth's
+ * database state strategy). The plugin's hand-back step skips the cookie
+ * check, so without this a hand-back URL opened in any browser within its 60
+ * seconds would sign that browser in. Here the hand-back is unsealed and its
+ * state must equal the signed cookie, or it is refused before the plugin runs.
+ *
+ * The key is derived exactly as the installed plugin derives it from a string
+ * `secret` (HKDF-SHA256, Better Auth's "oauth-proxy-profile" purpose). If a
+ * later Better Auth changes that, unsealing fails, every hand-back is
+ * refused (fails closed) and `npm run check:auth` reports it.
+ */
+function bindProxyHandBacksToBrowser(proxySecret: string): BetterAuthPlugin {
+  const profileKey = Buffer.from(
+    hkdfSync(
+      "sha256",
+      proxySecret,
+      "better-auth:oauth-encryption:v1",
+      "better-auth:oauth-proxy-profile:v1",
+      32,
+    ),
+  ).toString("hex");
+  return {
+    id: "meals-bind-oauth-proxy-hand-back",
+    hooks: {
+      before: [
+        {
+          matcher: (context) => isHandBackPath(context.path),
+          handler: createAuthMiddleware(async (ctx) => {
+            const sealed: unknown = ctx.query?.profile;
+            let state: unknown;
+            try {
+              if (typeof sealed !== "string") throw new Error("no profile");
+              state = (JSON.parse(await symmetricDecrypt({ key: profileKey, data: sealed })) as { state?: unknown })
+                .state;
+            } catch {
+              state = undefined;
+            }
+            const cookie = await ctx.getSignedCookie(
+              ctx.context.createAuthCookie("state").name,
+              ctx.context.secret,
+            );
+            if (typeof state !== "string" || !cookie || cookie !== state) {
+              ctx.context.logger.warn("OAuth proxy hand-back refused: not from the browser that started sign-in");
+              throw ctx.redirect("/sign-in?error=state_mismatch");
+            }
+          }),
+        },
+      ],
+    },
+  };
+}
+
+/**
  * Google sign-in on Vercel previews. Google only redirects to addresses
  * registered on the OAuth client, and every preview has a new one, so with
  * OAUTH_PROXY_URL set, Better Auth's oAuthProxy plugin sends every Google
  * sign-in to that one fixed address. The deployment there exchanges the code
- * with Google, seals the profile with the shared secret and hands it back to
+ * with Google, seals the profile with OAUTH_PROXY_SECRET and hands it back to
  * the preview the sign-in started on, which creates the session in its own
  * database (running the invite-only hooks there). A sign-in that starts on the
  * fixed address itself is not proxied.
- *
- * OAUTH_PROXY_SECRET, when set, seals the hand-off instead of
- * BETTER_AUTH_SECRET, so the two ends need to share only that. Every
- * deployment taking part needs the same value (or the same
- * BETTER_AUTH_SECRET, when it is unset).
  */
-function proxyPlugins(env: Env) {
-  const productionURL = oauthProxyOrigin(env);
-  if (!productionURL) return [];
-  const secret = env.OAUTH_PROXY_SECRET?.trim() || undefined;
-  return [oAuthProxy({ productionURL, secret })];
+function proxyPlugins(env: Env): BetterAuthPlugin[] {
+  const role = oauthProxyRole(env);
+  if (role === "off") {
+    if (oauthProxyOrigin(env)) {
+      console.error(
+        "OAUTH_PROXY_URL is set but OAUTH_PROXY_SECRET is missing or equal to BETTER_AUTH_SECRET; " +
+          "Google sign-in through the proxy is off.",
+      );
+    }
+    return [];
+  }
+  const proxy = oAuthProxy({
+    productionURL: oauthProxyOrigin(env)!,
+    secret: oauthProxySecret(env)!,
+  });
+  return role === "fixed"
+    ? [refuseProxyHandBacks(), proxy]
+    : [bindProxyHandBacksToBrowser(oauthProxySecret(env)!), proxy];
 }
 
 function createAuth(db: Db) {
@@ -142,6 +279,16 @@ function createAuth(db: Db) {
     }),
     // No passwords: people sign in with Google (and, later, passkeys).
     emailAndPassword: { enabled: false },
+    account: {
+      accountLinking: {
+        // A Google sign-in for an existing member's email but a different
+        // Google account (`sub`) is refused rather than linked: identity is
+        // the Google account the member first signed in with. Someone whose
+        // Google account was deleted and re-created is removed and
+        // re-invited by the owner (the stakeholder's decision).
+        disableImplicitLinking: true,
+      },
+    },
     socialProviders: google ? { google } : {},
     user: {
       additionalFields: {

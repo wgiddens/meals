@@ -17,6 +17,13 @@
  * member gets through while a forged cookie or a removed member's cookie is
  * redirected to sign-in (pages) or gets 401 (API routes).
  *
+ * And Google sign-in on Vercel previews (the OAuth proxy in src/lib/auth.ts):
+ * the trusted origins stay this project's own, and in a child process with
+ * two deployments (a fixed one and a preview, each with its own temporary
+ * PGlite) and Google's token endpoint stubbed, a preview sign-in completes
+ * through the fixed deployment, while a hand-back forged with the proxy
+ * secret is refused by the fixed deployment and by production.
+ *
  *   npm run check:auth
  *
  * By default this runs against a throwaway embedded database (PGlite). To run
@@ -36,8 +43,10 @@ import path from "node:path";
  * NODE_ENV=production and no BETTER_AUTH_SECRET.
  */
 const PRODUCTION_CHILD = process.env.CHECK_AUTH_PRODUCTION_CHILD === "1";
+/** Set only in the child process that checks the OAuth proxy (always PGlite). */
+const PROXY_CHILD = process.env.CHECK_AUTH_PROXY_CHILD === "1";
 
-const realUrl = process.env.CHECK_AUTH_DATABASE_URL;
+const realUrl = PROXY_CHILD ? undefined : process.env.CHECK_AUTH_DATABASE_URL;
 if (realUrl) {
   process.env.DATABASE_URL = realUrl;
 } else {
@@ -75,6 +84,228 @@ async function productionChild() {
     }
   }
   console.log("getAuth() rejected twice without BETTER_AUTH_SECRET");
+  process.exit(0);
+}
+
+/**
+ * Child mode: the OAuth proxy end to end, through Better Auth's real handler
+ * and our own getAuth(). Three deployments, each its own instance and PGlite
+ * database: the fixed address previews send Google to, a preview, and
+ * production once it is the fixed address. Only Google's token endpoint is
+ * stubbed. A forged hand-back is one built with nothing but
+ * OAUTH_PROXY_SECRET, the way anyone holding the preview environment could.
+ */
+async function proxyChild() {
+  const { hkdfSync } = await import("node:crypto");
+  const assert = (cond: unknown, msg: string) => {
+    if (!cond) throw new Error(`ASSERT FAILED: ${msg}`);
+    console.log(`ok - ${msg}`);
+  };
+  const FIXED = "https://meals-git-epic-accounts-fam.vercel.app";
+  const PREVIEW_HOST = "meals-git-feature-fam.vercel.app";
+  const PREVIEW = `https://${PREVIEW_HOST}`;
+  const PROD = "https://meals.example.com";
+  const PROXY_SECRET = "check-auth-proxy-secret-0123456789abcdef";
+  const preview = {
+    NODE_ENV: "production",
+    BETTER_AUTH_SECRET: "check-auth-preview-secret-0123456789ab",
+    GOOGLE_CLIENT_ID: "client.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "client-secret",
+    OWNER_EMAIL,
+    BETTER_AUTH_URL: FIXED,
+    OAUTH_PROXY_URL: FIXED,
+    OAUTH_PROXY_SECRET: PROXY_SECRET,
+    VERCEL_ENV: "preview",
+    VERCEL_URL: "meals-abc123-fam.vercel.app",
+    VERCEL_BRANCH_URL: PREVIEW_HOST,
+  };
+  const deployments = {
+    preview,
+    fixed: { ...preview, VERCEL_URL: "meals-fix123-fam.vercel.app", VERCEL_BRANCH_URL: new URL(FIXED).host },
+    production: {
+      ...preview,
+      BETTER_AUTH_SECRET: "check-auth-production-secret-0123456789",
+      BETTER_AUTH_URL: PROD,
+      OAUTH_PROXY_URL: PROD,
+      VERCEL_ENV: "production",
+      VERCEL_URL: "meals-prd123-fam.vercel.app",
+      VERCEL_BRANCH_URL: "meals-git-main-fam.vercel.app",
+    },
+  };
+  type Name = keyof typeof deployments;
+  const applyEnv = (name: Name) => Object.assign(process.env, deployments[name]);
+
+  const { getAuth, oauthProxyRole } = await import("@/lib/auth");
+  const { getDb, schema } = await import("@/db");
+  const { symmetricEncrypt, symmetricDecrypt } = await import("better-auth/crypto");
+
+  assert(oauthProxyRole(deployments.fixed) === "fixed", "proxy role: the fixed deployment (VERCEL_BRANCH_URL is the proxy) is fixed");
+  assert(oauthProxyRole(deployments.preview) === "receiver", "proxy role: a preview is a receiver");
+  assert(oauthProxyRole(deployments.production) === "fixed", "proxy role: production is fixed");
+  assert(
+    oauthProxyRole({ ...deployments.production, OAUTH_PROXY_URL: FIXED }) === "fixed",
+    "proxy role: production is fixed even when the proxy is another deployment",
+  );
+  assert(
+    oauthProxyRole({ ...preview, OAUTH_PROXY_SECRET: undefined }) === "off" &&
+      oauthProxyRole({ ...preview, OAUTH_PROXY_SECRET: preview.BETTER_AUTH_SECRET }) === "off" &&
+      oauthProxyRole({ ...preview, OAUTH_PROXY_URL: undefined }) === "off",
+    "proxy role: off without OAUTH_PROXY_URL, without OAUTH_PROXY_SECRET, or with it equal to BETTER_AUTH_SECRET",
+  );
+
+  // Google: the code is base64url JSON {email, nonce}, chosen below.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!url.startsWith("https://oauth2.googleapis.com/token")) return realFetch(input, init);
+    const code = new URLSearchParams(String(init?.body)).get("code") ?? "";
+    const { email, nonce } = JSON.parse(Buffer.from(code, "base64url").toString());
+    const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { iss: "https://accounts.google.com", aud: preview.GOOGLE_CLIENT_ID, sub: `sub-${email}`, email, email_verified: true, name: "Test", nonce, iat: now, exp: now + 3600 };
+    const body = { access_token: "at", id_token: `${b64({ alg: "RS256" })}.${b64(claims)}.sig`, expires_in: 3600, token_type: "Bearer" };
+    return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+
+  const instances = {} as Record<Name, { auth: Awaited<ReturnType<typeof getAuth>>; db: Awaited<ReturnType<typeof getDb>> }>;
+  for (const name of Object.keys(deployments) as Name[]) {
+    applyEnv(name);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `meals-auth-proxy-${name}-`));
+    process.on("exit", () => fs.rmSync(dir, { recursive: true, force: true }));
+    process.env.PGLITE_DATA_DIR = dir;
+    globalThis.__mealsDb = undefined;
+    const db = await getDb();
+    instances[name] = { auth: await getAuth(), db };
+  }
+
+  // One cookie jar per browser and host.
+  const jars = new Map<string, Map<string, string>>();
+  const call = async (name: Name, url: string, init: RequestInit = {}, browser = "person") => {
+    applyEnv(name);
+    const host = `${browser}|${new URL(url).host}`;
+    const jar = jars.get(host) ?? new Map<string, string>();
+    const headers = new Headers(init.headers);
+    if (jar.size) headers.set("cookie", [...jar].map(([k, v]) => `${k}=${v}`).join("; "));
+    const res = await instances[name].auth.handler(new Request(url, { ...init, headers, redirect: "manual" }));
+    for (const c of res.headers.getSetCookie()) {
+      const [pair] = c.split(";");
+      const i = pair.indexOf("=");
+      if (/max-age=0/i.test(c)) jar.delete(pair.slice(0, i));
+      else jar.set(pair.slice(0, i), pair.slice(i + 1));
+    }
+    jars.set(host, jar);
+    return res;
+  };
+  const startSignIn = async (name: Name, base: string, next = "/", browser = "person") => {
+    const res = await call(name, `${base}/api/auth/sign-in/social`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: base },
+      body: JSON.stringify({ provider: "google", callbackURL: `${base}${next}`, errorCallbackURL: `${base}/sign-in` }),
+    }, browser);
+    return new URL(((await res.json()) as { url: string }).url);
+  };
+  const googleReturns = (google: URL, email: string) => {
+    const code = Buffer.from(JSON.stringify({ email, nonce: google.searchParams.get("nonce") })).toString("base64url");
+    return `${google.searchParams.get("redirect_uri")}?code=${code}&state=${encodeURIComponent(google.searchParams.get("state")!)}`;
+  };
+  const countRows = async (name: Name) => ({
+    users: (await instances[name].db.select().from(schema.user)).length,
+    sessions: (await instances[name].db.select().from(schema.session)).length,
+  });
+
+  // A normal preview sign-in goes through the fixed deployment and back.
+  const google = await startSignIn("preview", PREVIEW, "/plan");
+  assert(
+    google.searchParams.get("redirect_uri") === `${FIXED}/api/auth/callback/google`,
+    "a preview sends Google to the fixed address",
+  );
+  const handBack = (await call("fixed", googleReturns(google, OWNER_EMAIL))).headers.get("location") ?? "";
+  assert(handBack.startsWith(`${PREVIEW}/api/auth/callback/google/oauth-proxy?`), "the fixed deployment hands the sign-in back to the preview");
+  // The hand-back is bound to the browser that started sign-in: opened in a
+  // browser with no cookies, or in one holding the state cookie of its own
+  // sign-in, it is refused and signs no one in.
+  const elsewhere = await call("preview", handBack, {}, "other");
+  await startSignIn("preview", PREVIEW, "/", "attacker");
+  const attacker = await call("preview", handBack, {}, "attacker");
+  for (const [label, res] of [["a browser with no cookies", elsewhere], ["a browser with its own sign-in's state cookie", attacker]] as const) {
+    assert(
+      res.headers.get("location") === "/sign-in?error=state_mismatch" &&
+        !res.headers.getSetCookie().some((c) => c.includes("session_token")),
+      `the hand-back opened in ${label} is refused (${res.headers.get("location")})`,
+    );
+  }
+  assert((await countRows("preview")).sessions === 0, "and no session was created");
+  const done = await call("preview", handBack);
+  assert(done.headers.get("location") === `${PREVIEW}/plan`, `the preview completes the sign-in (${done.headers.get("location")})`);
+  assert((await countRows("preview")).sessions === 1 && (await countRows("fixed")).users === 0, "the session is on the preview; the fixed deployment created nothing");
+
+  // Forged hand-backs: a Google profile sealed with OAUTH_PROXY_SECRET alone.
+  const proxyKey = (purpose: string) =>
+    Buffer.from(
+      hkdfSync("sha256", PROXY_SECRET, "better-auth:oauth-encryption:v1", `better-auth:${purpose}:v1`, 32),
+    ).toString("hex");
+  const forge = async (base: string, state: string, apiPath: string, sub = "sub-forged") => {
+    const payload = {
+      userInfo: { id: sub, email: OWNER_EMAIL, name: "Forged", emailVerified: true },
+      account: { providerId: "google", accountId: sub, accessToken: "x" },
+      state,
+      callbackURL: `${base}/`,
+      timestamp: Date.now(),
+    };
+    const profile = await symmetricEncrypt({ key: proxyKey("oauth-proxy-profile"), data: JSON.stringify(payload) });
+    return `${base}/api/auth${apiPath}?callbackURL=${encodeURIComponent(`${base}/`)}&profile=${encodeURIComponent(profile)}`;
+  };
+  // The state a deployment issued for a sign-in, unsealed from the package.
+  const stateOf = async (google: URL) => {
+    const sealed = google.searchParams.get("state")!;
+    try {
+      return JSON.parse(await symmetricDecrypt({ key: proxyKey("oauth-proxy-package"), data: sealed })).state as string;
+    } catch {
+      return sealed; // not proxied: the raw state
+    }
+  };
+
+  // The forgery is otherwise valid: a preview accepts it in the browser that
+  // started the sign-in, when it names the owner's own Google account. With
+  // another Google account for the owner's email it is refused, since
+  // implicit linking is off. (Accepted risk: whoever holds the preview
+  // environment can sign in to a preview's own database, never production's.)
+  const forgedOtherSub = await call("preview", await forge(PREVIEW, await stateOf(await startSignIn("preview", PREVIEW)), "/callback/google/oauth-proxy"));
+  assert(
+    (forgedOtherSub.headers.get("location") ?? "").includes("error=account_not_linked"),
+    `a preview refuses a hand-back for the owner's email from another Google account (${forgedOtherSub.headers.get("location")})`,
+  );
+  const previewForged = await call(
+    "preview",
+    await forge(PREVIEW, await stateOf(await startSignIn("preview", PREVIEW)), "/callback/google/oauth-proxy", `sub-${OWNER_EMAIL}`),
+  );
+  assert(previewForged.headers.get("location") === `${PREVIEW}/`, "a hand-back forged with the proxy secret is otherwise valid (a preview accepts it)");
+
+  for (const [name, base] of [["fixed", FIXED], ["production", PROD]] as [Name, string][]) {
+    for (const apiPath of ["/callback/google/oauth-proxy", "/oauth-proxy-callback"]) {
+      const state = await stateOf(await startSignIn(name, base));
+      const before = await countRows(name);
+      const res = await call(name, await forge(base, state, apiPath));
+      const after = await countRows(name);
+      assert(
+        res.headers.get("location") === "/sign-in?error=proxy_hand_back_refused" &&
+          after.users === before.users && after.sessions === before.sessions &&
+          !res.headers.getSetCookie().some((c) => c.includes("session_token")),
+        `${name} refuses a forged hand-back on ${apiPath} and signs no one in (${res.status} ${res.headers.get("location")})`,
+      );
+    }
+  }
+
+  // Each deployment's own sign-in still goes straight through.
+  for (const [name, base] of [["fixed", FIXED], ["production", PROD]] as [Name, string][]) {
+    const own = await startSignIn(name, base);
+    assert(own.searchParams.get("redirect_uri") === `${base}/api/auth/callback/google`, `${name}'s own sign-in is not proxied`);
+    const res = await call(name, googleReturns(own, OWNER_EMAIL));
+    assert(res.headers.get("location") === `${base}/` && (await countRows(name)).sessions === 1, `${name}'s own sign-in completes there`);
+  }
+
+  globalThis.fetch = realFetch;
+  console.log("OAuth proxy checks passed");
   process.exit(0);
 }
 
@@ -229,6 +460,25 @@ async function main() {
   assert(
     ownerAgain.id === owner.id && ownerAgain.role === "owner" && (await userCount(OWNER_EMAIL)) === 1,
     "signing in with Google again reaches the same owner and creates no second account",
+  );
+  // Implicit account linking is off: the owner's email from a different
+  // Google account (another `sub`) is refused, not linked to the owner.
+  const otherSub = `google-sub-other-${RUN}`;
+  const otherGoogle = await handleOAuthUserInfo({ context: ctx } as never, {
+    userInfo: { id: otherSub, name: "Will", email: OWNER_EMAIL, emailVerified: true },
+    account: { providerId: "google", accountId: otherSub, accessToken: "access", scope: "openid email profile" },
+    callbackURL: "/",
+    source: { method: "oauth", oauth: { providerId: "google", profile: { sub: otherSub, email: OWNER_EMAIL, email_verified: true } } },
+  }).catch((err: unknown) => ({ error: errorCode(err), data: null }));
+  const ownerAccountsAfter = await db.select().from(schema.account).where(eq(schema.account.userId, owner.id));
+  assert(
+    otherGoogle.error === "account not linked" && !otherGoogle.data && ownerAccountsAfter.length === 1 &&
+      ownerAccountsAfter[0].accountId === `google-sub-${OWNER_EMAIL}`,
+    `the owner's email from a different Google account (sub) is refused and not linked (got ${otherGoogle.error})`,
+  );
+  assert(
+    (await createUser("Will", OWNER_EMAIL)).id === owner.id,
+    "the owner's own Google account (same sub) still signs in",
   );
   const nextOwnerEmail = `next-owner-${RUN}@example.com`;
   process.env.OWNER_EMAIL = nextOwnerEmail;
@@ -688,6 +938,73 @@ async function main() {
   await db.delete(schema.family);
   await db.delete(schema.user).where(like(schema.user.email, `%-${RUN}@example.com`));
 
+  // ---- Trusted origins: this project's own, nothing wider ------------------
+  const { trustedOrigins } = await import("@/lib/auth");
+  const previewEnv = {
+    NODE_ENV: "production",
+    VERCEL_ENV: "preview",
+    VERCEL_URL: "meals-abc123-fam.vercel.app",
+    VERCEL_BRANCH_URL: "meals-git-feature-fam.vercel.app",
+    OAUTH_PROXY_URL: "https://meals-git-epic-accounts-fam.vercel.app/",
+  };
+  const previewTrusted = trustedOrigins(previewEnv);
+  assert(
+    JSON.stringify([...previewTrusted].sort()) ===
+      JSON.stringify(
+        [
+          "https://meals-abc123-fam.vercel.app",
+          "https://meals-git-feature-fam.vercel.app",
+          "https://meals-git-epic-accounts-fam.vercel.app",
+        ].sort(),
+      ),
+    `a preview trusts exactly its own two addresses and the proxy (${previewTrusted.join(", ")})`,
+  );
+  const trustedCases: [string, Record<string, string | undefined>][] = [
+    ["a preview", previewEnv],
+    ["production", { NODE_ENV: "production", VERCEL_ENV: "production", VERCEL_URL: "meals-x-fam.vercel.app", VERCEL_BRANCH_URL: "meals-git-main-fam.vercel.app" }],
+    ["production with the proxy", { NODE_ENV: "production", VERCEL_ENV: "production", OAUTH_PROXY_URL: "https://meals.example.com" }],
+    ["development", { NODE_ENV: "development" }],
+    ["development on a Vercel preview env", { NODE_ENV: "development", VERCEL_ENV: "preview", VERCEL_URL: "x.vercel.app" }],
+  ];
+  for (const [label, env] of trustedCases) {
+    const origins = trustedOrigins(env);
+    const production = env.NODE_ENV === "production";
+    assert(
+      origins.every((o) => !o.includes("*") || (!production && /^http:\/\/(localhost|127\.0\.0\.1):\*$/.test(o))),
+      `${label}: no wildcard origin (so nothing like *.vercel.app), except localhost:* outside production (${origins.join(", ") || "none"})`,
+    );
+    assert(
+      origins.some((o) => /localhost|127\.0\.0\.1/.test(o)) === !production,
+      `${label}: localhost is trusted ${production ? "not at all" : "(development only)"}`,
+    );
+  }
+  assert(
+    trustedOrigins({ NODE_ENV: "production", VERCEL_ENV: "production", VERCEL_URL: "meals-x-fam.vercel.app" }).length === 0,
+    "production trusts nothing beyond BETTER_AUTH_URL when the proxy is off (not even its own per-deployment URL)",
+  );
+  const trustCtx = await auth.$context;
+  assert(
+    !trustCtx.isTrustedOrigin("https://evil.vercel.app") && !trustCtx.isTrustedOrigin("https://anything.vercel.app/x"),
+    "the running instance does not trust an arbitrary *.vercel.app address",
+  );
+
+  // The OAuth proxy end to end, in its own process (it needs three
+  // deployments, each with its own instance and database).
+  const proxyEnv: NodeJS.ProcessEnv = { ...process.env, CHECK_AUTH_PROXY_CHILD: "1" };
+  delete proxyEnv.PGLITE_DATA_DIR;
+  delete proxyEnv.CHECK_AUTH_DATABASE_URL;
+  const proxyRun = spawnSync(path.join(process.cwd(), "node_modules", ".bin", "tsx"), ["--tsconfig", "tsconfig.json", process.argv[1]], {
+    env: proxyEnv,
+    encoding: "utf8",
+  });
+  for (const line of proxyRun.stdout.split("\n").filter((l) => l.startsWith("ok - "))) console.log(`  (proxy) ${line}`);
+  assert(
+    proxyRun.status === 0,
+    `OAuth proxy: previews sign in through the fixed deployment; forged hand-backs are refused there and in production (child exit ${proxyRun.status}${
+      proxyRun.status === 0 ? "" : `: ${(proxyRun.stderr || proxyRun.stdout).trim().slice(-2000)}`
+    })`,
+  );
+
   // Production with no secret must fail closed. A fresh child process, so no
   // instance is cached. On PGlite it makes its own temporary database when it
   // loads this script.
@@ -714,7 +1031,7 @@ async function main() {
   process.exit(0);
 }
 
-(PRODUCTION_CHILD ? productionChild() : main()).catch((err) => {
+(PRODUCTION_CHILD ? productionChild() : PROXY_CHILD ? proxyChild() : main()).catch((err) => {
   console.error(err);
   process.exit(1);
 });

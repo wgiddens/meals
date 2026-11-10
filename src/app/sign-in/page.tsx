@@ -35,6 +35,8 @@ function errorMessage(code: string | undefined): string | null {
     case "EMAIL_NOT_VERIFIED":
     case "email_not_verified":
       return "Google hasn’t verified this account’s email address, so it can’t be used to sign in.";
+    case "account_not_linked":
+      return "This isn’t the Google account you first signed in with for this email address. Use that one, or ask the family’s owner to remove and re-invite you.";
     case "access_denied":
       return "Sign-in was cancelled.";
     default:
