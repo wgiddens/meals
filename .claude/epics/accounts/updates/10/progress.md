@@ -1,7 +1,7 @@
 ---
 issue: 10
 started: 2026-11-10T20:07:28Z
-last_sync: 2026-11-10T20:19:34Z
+last_sync: 2026-11-10T20:37:24Z
 completion: 100%
 ---
 
@@ -10,6 +10,34 @@ completion: 100%
 Streams A-D are implemented on branch `claude/issue-10-family-rules` and are
 awaiting review in a draft PR into `epic/accounts`. See `stream-A.md` for
 details. The task stays `in-progress` until it is reviewed and merged.
+
+## Review fixes (2026-11-10T20:37:24Z)
+Review of PR #20 found three issues; all are fixed on the same branch.
+- **Blocker: every Google sign-up failed.** Better Auth parses a new OAuth
+  user's fields before any hook runs, and refused `role` (required, server
+  only, no default) with `MISSING_FIELD`. Fixed by giving `role` a
+  `defaultValue` of `member`; the before hook still sets the real role.
+  `check-auth.ts` now signs up through `handleOAuthUserInfo`, the function
+  the OAuth callback calls, so the profile parsing, user insert, account
+  link and session all run. The check fails with `MISSING_FIELD` without
+  the fix.
+- **A stale pending invitation could let a removed member back in.**
+  - With `transaction: false`, the user row commits before the after hook
+    runs. If accepting the invitation failed, it stayed pending.
+  - Now `removeMember` cancels pending invitations for the member's email
+    in its transaction.
+  - `signUpRole` ignores a pending invitation whose email already belongs
+    to a user, and `listFamily` does not show one.
+  - The adapter still runs with `transaction: false`, so the user and
+    account inserts are not atomic.
+- **Race between cancelling and signing in.** If no pending invitation is
+  left to accept when the after hook runs, `completeSignUp` deletes the new
+  user (the linked account cascades) and the hook throws `NOT_INVITED`
+  before a session is created. The check simulates the cancel while the
+  Google account is being linked.
+- Each fix was confirmed by reverting it and seeing a check fail.
+  `check:auth` passes on PGlite (72 checks) and on a local Postgres 16
+  (73 checks).
 
 ## Notes for later tasks
 - #11 (dev owner): the before-create hook refuses every email that is not

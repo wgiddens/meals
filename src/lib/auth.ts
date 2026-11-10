@@ -59,8 +59,17 @@ function createAuth(db: Db) {
       additionalFields: {
         // Server-only: `input: false` makes every client endpoint refuse a
         // `role` in its body, and keeps it out of what a provider profile can
-        // set. Only the before-create hook below writes it.
-        role: { type: [...userRoles], required: true, input: false },
+        // set. Only the before-create hook below decides it.
+        //
+        // The default is required: Better Auth parses a new OAuth user's
+        // fields before any hook runs and refuses a required field with no
+        // value (MISSING_FIELD). The hook then replaces it with the real role.
+        role: {
+          type: [...userRoles],
+          required: true,
+          input: false,
+          defaultValue: "member" satisfies Role,
+        },
       },
     },
     databaseHooks: {
@@ -88,11 +97,25 @@ function createAuth(db: Db) {
             // Written with the row itself, whatever the caller passed.
             return { data: { role } };
           },
-          // Runs once the row exists: the owner gets the family row, a member's
-          // invitation is marked accepted. The display name is left as the
-          // provider gave it; the invitation's name is only a label.
+          // Runs once the row exists (for Google, once the account is linked
+          // too): the owner gets the family row, a member's invitation is
+          // marked accepted. The display name is left as the provider gave
+          // it; the invitation's name is only a label.
+          //
+          // If the invitation was cancelled while this person was signing in,
+          // completeSignUp deletes the new user (and their linked account)
+          // and the sign-in is refused before any session is created.
           after: async (user) => {
-            await completeSignUp({ email: user.email, role: user.role as Role }, db);
+            const kept = await completeSignUp(
+              { id: user.id, email: user.email, role: user.role as Role },
+              db,
+            );
+            if (!kept) {
+              throw new APIError("FORBIDDEN", {
+                code: "NOT_INVITED",
+                message: "This account hasn't been invited.",
+              });
+            }
           },
         },
       },

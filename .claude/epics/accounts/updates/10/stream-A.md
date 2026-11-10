@@ -36,8 +36,17 @@ Streams A-D from `10-analysis.md`, done in order by one implementer.
   now has it deleted from its environment and makes its own). Each process
   removes its temporary directory on exit.
 
+- **Review fixes:**
+  - The `role` default fixes OAuth sign-up.
+  - Sign-up is checked through `handleOAuthUserInfo`.
+  - `removeMember` cancels pending invitations, and stale invitations grant
+    nothing.
+  - An invitation cancelled mid-sign-in deletes the new user and refuses
+    the sign-in.
+  - See `progress.md`.
+
 ## Verified
-- `check:auth` (67 assertions) passes on PGlite, and twice in a row against
+- `check:auth` (72 assertions on PGlite, 73 on Postgres) passes on PGlite, and twice in a row against
   a local Postgres 16 through postgres-js (`CHECK_AUTH_DATABASE_URL`). The
   run cleans up its own rows.
 - Mutation checks: removing `input: false`, the verified-email check, the

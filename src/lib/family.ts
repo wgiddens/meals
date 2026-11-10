@@ -88,6 +88,15 @@ async function hasOwner(db: Db): Promise<boolean> {
   return rows.length > 0;
 }
 
+async function isMemberEmail(db: Db, email: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: schema.user.id })
+    .from(schema.user)
+    .where(eq(schema.user.email, email))
+    .limit(1);
+  return rows.length > 0;
+}
+
 async function hasPendingInvitation(db: Db, email: string): Promise<boolean> {
   const rows = await db
     .select({ id: schema.invitations.id })
@@ -109,7 +118,11 @@ export async function signUpRole(email: string, db?: Db): Promise<Role | null> {
   if (!normalized) return null;
   const owner = ownerEmail();
   if (owner && normalized === owner && !(await hasOwner(conn))) return "owner";
-  if (await hasPendingInvitation(conn, normalized)) return "member";
+  // An invitation whose email already belongs to someone is stale (its
+  // acceptance did not complete), so it grants nothing.
+  if ((await hasPendingInvitation(conn, normalized)) && !(await isMemberEmail(conn, normalized))) {
+    return "member";
+  }
   return null;
 }
 
@@ -121,20 +134,25 @@ export async function canSignUp(email: string, db?: Db): Promise<boolean> {
 /**
  * Called after Better Auth has created a user (see src/lib/auth.ts). The owner
  * gets the family row; a member's invitation becomes accepted.
+ *
+ * Returns false if a member had no pending invitation left to accept, because
+ * it was cancelled between the before-create check and now. That user is
+ * deleted again (their linked account and sessions go with the row), and the
+ * caller must refuse the sign-in.
  */
 export async function completeSignUp(
-  created: { email: string; role: Role },
+  created: { id: string; email: string; role: Role },
   db?: Db,
-): Promise<void> {
+): Promise<boolean> {
   const conn = await resolveDb(db);
   if (created.role === "owner") {
     await conn
       .insert(schema.family)
       .values({ id: 1, name: DEFAULT_FAMILY_NAME })
       .onConflictDoNothing({ target: schema.family.id });
-    return;
+    return true;
   }
-  await conn
+  const accepted = await conn
     .update(schema.invitations)
     .set({ state: "accepted", updatedAt: new Date() })
     .where(
@@ -142,7 +160,13 @@ export async function completeSignUp(
         eq(schema.invitations.email, normalizeEmail(created.email)),
         eq(schema.invitations.state, "pending"),
       ),
-    );
+    )
+    .returning();
+  if (accepted.length > 0) return true;
+  await conn
+    .delete(schema.user)
+    .where(and(eq(schema.user.id, created.id), eq(schema.user.role, "member")));
+  return false;
 }
 
 /** Refuses anyone who is not, according to the database, the owner. */
@@ -191,12 +215,7 @@ export async function inviteMember(
     throw new FamilyError("INVALID_EMAIL", "Enter the email address of their Google account.");
   }
 
-  const members = await conn
-    .select({ id: schema.user.id })
-    .from(schema.user)
-    .where(eq(schema.user.email, email))
-    .limit(1);
-  if (members.length > 0) {
+  if (await isMemberEmail(conn, email)) {
     throw new FamilyError("ALREADY_MEMBER", `${email} is already in the family.`);
   }
   const alreadyInvited = new FamilyError("ALREADY_INVITED", `${email} has already been invited.`);
@@ -248,7 +267,7 @@ export async function removeMember(actor: Actor, memberId: string, db?: Db): Pro
   const conn = await resolveDb(db);
   await requireOwnerActor(conn, actor);
   const [target] = await conn
-    .select({ role: schema.user.role })
+    .select({ role: schema.user.role, email: schema.user.email })
     .from(schema.user)
     .where(eq(schema.user.id, memberId))
     .limit(1);
@@ -257,6 +276,16 @@ export async function removeMember(actor: Actor, memberId: string, db?: Db): Pro
     throw new FamilyError("CANNOT_REMOVE_OWNER", "The family's owner cannot be removed.");
   }
   await conn.transaction(async (tx) => {
+    // A pending invitation for their email would let them straight back in.
+    await tx
+      .update(schema.invitations)
+      .set({ state: "cancelled", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.invitations.email, normalizeEmail(target.email)),
+          eq(schema.invitations.state, "pending"),
+        ),
+      );
     await tx.delete(schema.session).where(eq(schema.session.userId, memberId));
     await tx.delete(schema.account).where(eq(schema.account.userId, memberId));
     // The role condition guards against the row having changed in between.
@@ -302,7 +331,8 @@ export async function listFamily(db?: Db): Promise<FamilyOverview> {
     ...users.filter((u) => u.role === "owner"),
     ...users.filter((u) => u.role !== "owner"),
   ];
-  const invitations = await conn
+  const memberEmails = new Set(users.map((u) => u.email));
+  const pending = await conn
     .select({
       id: schema.invitations.id,
       name: schema.invitations.name,
@@ -313,5 +343,8 @@ export async function listFamily(db?: Db): Promise<FamilyOverview> {
     .from(schema.invitations)
     .where(eq(schema.invitations.state, "pending"))
     .orderBy(asc(schema.invitations.createdAt));
+  // A pending invitation for someone already in the family is stale; it
+  // grants nothing (see signUpRole), so it is not shown as pending.
+  const invitations = pending.filter((i) => !memberEmails.has(i.email));
   return { name: familyRow?.name ?? DEFAULT_FAMILY_NAME, members, invitations };
 }

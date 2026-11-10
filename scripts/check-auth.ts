@@ -136,18 +136,36 @@ async function main() {
   );
 
   // ---- Invite-only sign-up -------------------------------------------------
-  // Users are created through Better Auth's own createUser, which runs the
-  // same database hooks as a Google sign-in. `emailVerified` stands in for
-  // Google's email_verified claim.
+  // Sign-ups go through handleOAuthUserInfo, the function Better Auth's OAuth
+  // callback calls once Google has returned the user's profile: it parses the
+  // profile, creates the user (running our database hooks), links the Google
+  // account and creates a session. Only the HTTP round trip to Google is
+  // skipped. `emailVerified` stands in for Google's email_verified claim;
+  // `extra` lands in the provider profile, as unknown claims would.
+  const { handleOAuthUserInfo } = await import("better-auth/oauth2");
   const userCount = async (email: string) =>
     (await db.select().from(schema.user).where(eq(schema.user.email, email))).length;
   const errorCode = (err: unknown) =>
     (err as { body?: { code?: string } })?.body?.code ?? (err as { code?: string })?.code ?? String(err);
-  const createUser = (name: string, email: string, emailVerified = true, extra = {}) =>
-    ctx.internalAdapter.createUser(
-      { name, email, emailVerified, ...extra },
-      { method: "oauth", oauth: { providerId: "google" } },
-    );
+  const createUser = async (
+    name: string,
+    email: string,
+    emailVerified = true,
+    extra: Record<string, unknown> = {},
+  ) => {
+    const sub = `google-sub-${email.trim().toLowerCase()}`;
+    const result = await handleOAuthUserInfo({ context: ctx } as never, {
+      userInfo: { id: sub, name, email, emailVerified, ...extra },
+      account: { providerId: "google", accountId: sub, accessToken: "access", scope: "openid email profile" },
+      callbackURL: "/",
+      source: {
+        method: "oauth",
+        oauth: { providerId: "google", profile: { sub, email, email_verified: emailVerified, name, ...extra } },
+      },
+    });
+    if (result.error || !result.data) throw new Error(`OAuth sign-in failed: ${result.error}`);
+    return result.data.user as typeof result.data.user & { role: string };
+  };
   const refusal = (promise: Promise<unknown>) =>
     promise.then(
       () => "created",
@@ -172,11 +190,11 @@ async function main() {
     `the owner email is refused when the provider did not verify it, and no row is written (got ${unverifiedRefusal})`,
   );
 
-  // A caller asking for "member" still gets "owner": only the hook decides.
+  // A profile claiming "member" still gets "owner": only the hook decides.
   const owner = await createUser("Will (Google)", OWNER_EMAIL.toUpperCase(), true, { role: "member" });
   assert(
     owner?.role === "owner" && owner.email === OWNER_EMAIL,
-    `the owner email becomes the owner, stored lower-case (got ${owner?.role} ${owner?.email})`,
+    `the owner email becomes the owner through Google sign-up, stored lower-case (got ${owner?.role} ${owner?.email})`,
   );
   let overview = await family.listFamily(db);
   assert(overview.name === "Our family", `creating the owner creates the family "Our family" (got ${overview.name})`);
@@ -184,8 +202,16 @@ async function main() {
   assert(familyRow?.id === 1 && familyRow.name === "Our family", "the family row exists");
 
   assert(!(await family.canSignUp(OWNER_EMAIL, db)), "once there is an owner, canSignUp(OWNER_EMAIL) is false");
-  const secondOwnerRefusal = await refusal(createUser("Again", OWNER_EMAIL));
-  assert(secondOwnerRefusal !== "created", `the owner email cannot create a second account (got ${secondOwnerRefusal})`);
+  const ownerAccounts = await db.select().from(schema.account).where(eq(schema.account.userId, owner.id));
+  assert(
+    ownerAccounts.length === 1 && ownerAccounts[0].providerId === "google",
+    "the owner's Google account is linked on sign-up",
+  );
+  const ownerAgain = await createUser("Will again", OWNER_EMAIL);
+  assert(
+    ownerAgain.id === owner.id && ownerAgain.role === "owner" && (await userCount(OWNER_EMAIL)) === 1,
+    "signing in with Google again reaches the same owner and creates no second account",
+  );
   const nextOwnerEmail = `next-owner-${RUN}@example.com`;
   process.env.OWNER_EMAIL = nextOwnerEmail;
   const changedOwnerRefusal = await refusal(createUser("Usurper", nextOwnerEmail));
@@ -248,7 +274,10 @@ async function main() {
     `an invited email is refused when the provider did not verify it (got ${memberUnverified})`,
   );
   const member = await createUser("Shannon G. (Google)", memberEmail, true, { role: "owner" });
-  assert(member?.role === "member", `an invited email becomes a member, whatever role is passed (got ${member?.role})`);
+  assert(
+    member?.role === "member",
+    `an invited email becomes a member through Google sign-up, even with a role claim in the profile (got ${member?.role})`,
+  );
   assert(
     member.name === "Shannon G. (Google)",
     "the member's display name comes from their profile, not the invitation",
@@ -259,6 +288,43 @@ async function main() {
     .where(eq(schema.invitations.id, invitation.id));
   assert(accepted?.state === "accepted", `the invitation becomes accepted (got ${accepted?.state})`);
   assert(!(await family.canSignUp(memberEmail, db)), "an accepted invitation does not allow another sign-up");
+
+  // Better Auth's server-side createUser runs the same hook: a role passed by
+  // the caller is replaced too.
+  const directEmail = `direct-${RUN}@example.com`;
+  await family.inviteMember(owner, { name: "Direct", email: directEmail }, db);
+  const direct = await ctx.internalAdapter.createUser(
+    { name: "Direct", email: directEmail, emailVerified: true, role: "owner" },
+    { method: "oauth", oauth: { providerId: "google" } },
+  );
+  assert(direct?.role === "member", `createUser with role "owner" still makes a member (got ${direct?.role})`);
+  await family.removeMember(owner, direct.id, db);
+
+  // An invitation cancelled while its invitee is mid-sign-in: the before-create
+  // check has passed, then the owner cancels. Simulated by cancelling while
+  // Better Auth links the Google account, which happens between the user
+  // insert and the after-create hook.
+  const raceEmail = `race-${RUN}@example.com`;
+  const raceInvite = await family.inviteMember(owner, { name: "Race", email: raceEmail }, db);
+  const realCreateAccount = ctx.internalAdapter.createAccount;
+  ctx.internalAdapter.createAccount = async (...args) => {
+    await family.cancelInvitation(owner, raceInvite.id, db);
+    return realCreateAccount(...args);
+  };
+  let raceOutcome: string;
+  try {
+    raceOutcome = await refusal(createUser("Race", raceEmail));
+  } finally {
+    ctx.internalAdapter.createAccount = realCreateAccount;
+  }
+  const raceAccounts = await db
+    .select()
+    .from(schema.account)
+    .where(eq(schema.account.accountId, `google-sub-${raceEmail}`));
+  assert(
+    raceOutcome === "NOT_INVITED" && (await userCount(raceEmail)) === 0 && raceAccounts.length === 0,
+    `an invitation cancelled mid-sign-in refuses the sign-in and leaves no user or account (got ${raceOutcome})`,
+  );
 
   // ---- Owner-only actions ----------------------------------------------------
   const laterEmail = `later-${RUN}@example.com`;
@@ -374,11 +440,18 @@ async function main() {
   assert(userFields?.input === false, "role is declared to Better Auth with input: false");
 
   // ---- Removing a member -----------------------------------------------------------
-  await ctx.internalAdapter.createAccount({
-    userId: member.id,
-    providerId: "google",
-    accountId: `google-${RUN}`,
-  });
+  // A stale pending invitation for someone already in the family (left behind
+  // if accepting it failed) grants nothing, isn't listed, and is cancelled
+  // when they are removed.
+  const [stale] = await db
+    .insert(schema.invitations)
+    .values({ name: "Stale", email: memberEmail, invitedBy: owner.id })
+    .returning();
+  assert(!(await family.canSignUp(memberEmail, db)), "a pending invitation for an existing member grants nothing");
+  assert(
+    (await family.listFamily(db)).invitations.every((i) => i.id !== stale.id),
+    "listFamily does not show a stale invitation for an existing member",
+  );
   const accountsBefore = await db.select().from(schema.account).where(eq(schema.account.userId, member.id));
   assert(accountsBefore.length === 1, "the member has a linked Google account");
   await family.removeMember(owner, member.id, db);
@@ -392,6 +465,8 @@ async function main() {
     (await ctx.internalAdapter.findSession(session.token)) === null,
     "the removed member's session no longer resolves",
   );
+  const [staleAfter] = await db.select().from(schema.invitations).where(eq(schema.invitations.id, stale.id));
+  assert(staleAfter?.state === "cancelled", `removeMember cancels the member's pending invitation (got ${staleAfter?.state})`);
   const afterRemoval = await auth.handler(
     new Request("http://localhost:3000/api/auth/get-session", { headers: { cookie } }),
   );
