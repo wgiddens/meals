@@ -2,10 +2,10 @@
 name: accounts
 status: backlog
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T18:57:52Z
+updated: 2026-11-10T19:03:42Z
 progress: 0%
 prd: .claude/prds/accounts.md
-github: (will be set on sync)
+github: https://github.com/wgiddens/meals/issues/8
 ---
 
 # Epic: accounts
@@ -228,14 +228,14 @@ tasks 6 and 7 run beside 4. The one step that needs the repo owner is
 creating the Google OAuth client and setting the Vercel variables.
 
 ## Tasks Created
-- [ ] 001.md - Sign-in foundation with Better Auth (parallel: false)
-- [ ] 002.md - Family rules: invitations, roles and invite-only sign-up (parallel: false)
-- [ ] 003.md - Member gate: replace the household passcode (parallel: false)
-- [ ] 004.md - Sign-in page with Google, sign out and My account (parallel: true)
-- [ ] 005.md - Passkeys: add, remove and sign in (parallel: true)
-- [ ] 006.md - Family page: members, invitations and owner controls (parallel: true)
-- [ ] 007.md - Automated checks for the account rules (parallel: true)
-- [ ] 008.md - Documentation, deployment setup and production check (parallel: false)
+- [ ] #9 - Sign-in foundation with Better Auth (parallel: false)
+- [ ] #10 - Family rules: invitations, roles and invite-only sign-up (parallel: false)
+- [ ] #11 - Member gate: replace the household passcode (parallel: false)
+- [ ] #12 - Sign-in page with Google, sign out and My account (parallel: true)
+- [ ] #13 - Passkeys: add, remove and sign in (parallel: true)
+- [ ] #14 - Family page: members, invitations and owner controls (parallel: true)
+- [ ] #15 - Automated checks for the account rules (parallel: true)
+- [ ] #16 - Documentation, deployment setup and production check (parallel: false)
 
 Total tasks: 8
 Parallel tasks: 4
