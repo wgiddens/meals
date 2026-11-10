@@ -1,11 +1,28 @@
 ---
 name: ccpm
-description: "CCPM - spec-driven project management: PRD → Epic → GitHub Issues → parallel agents → shipped code. Use this skill for anything in the software delivery lifecycle: writing a PRD ('write a PRD for X', 'let's plan X', 'scope this out'), parsing a PRD into an epic, decomposing an epic into tasks, syncing to GitHub ('sync the X epic', 'push tasks to github'), starting work on an issue ('start working on issue N', 'let's work on issue N'), analyzing parallel work streams, running standups ('standup', 'run the standup'), checking status ('what's next', 'what's blocked', 'what are we working on'), closing issues, or merging an epic. Use ccpm any time the user is talking about shipping a feature, managing work, or tracking progress — even if they don't say 'ccpm' or 'PRD'. Do NOT use for: debugging code, writing tests, reviewing PRs, or raw GitHub issue/PR operations with no delivery context."
+description: "CCPM - spec-driven project management: PRD → Epic → GitHub Issues → parallel agents → shipped code. Use this skill for anything in the software delivery lifecycle: writing a PRD ('write a PRD for X', 'let's plan X', 'scope this out'), parsing a PRD into an epic, decomposing an epic into tasks, syncing to GitHub ('sync the X epic', 'push tasks to github'), starting work on an issue ('start working on issue N', 'let's work on issue N'), analyzing parallel work streams, running standups ('standup', 'run the standup'), checking status ('what's next', 'what's blocked', 'what are we working on'), closing issues, or merging an epic. Use ccpm any time the user is talking about shipping a feature, managing work, or tracking progress — even if they don't say 'ccpm' or 'PRD'. In this repo, starting work on an issue, closing issues and merging an epic are run through the orchestrator skill instead (see "In this repo" below). Do NOT use for: debugging code, writing tests, reviewing PRs, or raw GitHub issue/PR operations with no delivery context."
 ---
 
 # CCPM - Claude Code Project Manager
 
 A spec-driven development workflow: PRD → Epic → GitHub Issues → Parallel Agents → Shipped Code.
+
+## In this repo
+
+Two local rules come before everything below:
+
+- **Starting work on an issue, closing an issue, and merging an epic go
+  through the orchestrator skill** (`.claude/skills/orchestrator/SKILL.md`).
+  It runs each task as a separate implementation chat with a draft PR into
+  `epic/<name>`, a separate review chat, and the stakeholder's merge. Load it
+  and follow it instead of `references/execute.md` "Starting an Issue" / "Starting a Full
+  Epic" and `references/sync.md` "Closing an Issue" / "Merging an Epic".
+- **Epic and task files live on the epic branch, not `main`.** Run every
+  tracking script (status, standup, next, blocked, in-progress, epic-status,
+  validate) from the epic worktree `../epic-<name>/`, set up as described in
+  `references/conventions.md` "Git / Worktree Conventions". On `main` they
+  read a stale snapshot of the epic files from before the epic branch moved
+  on, so their output looks valid but is wrong.
 
 ## Core Philosophy
 
