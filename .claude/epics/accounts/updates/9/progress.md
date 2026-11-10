@@ -1,8 +1,8 @@
 ---
 issue: 9
 started: 2026-11-10T19:19:03Z
-last_sync: 2026-11-10T19:19:03Z
-completion: 90%
+last_sync: 2026-11-10T19:58:25Z
+completion: 95%
 ---
 
 # Issue #9: Sign-in foundation with Better Auth
@@ -37,3 +37,31 @@ awaiting review.
 - Better Auth warns when `BETTER_AUTH_URL` is unset and derives the origin
   from the request. Harmless locally; set it on the deployment.
 - Not verified against Neon itself, only a local Postgres 16.
+
+## Review follow-up (branch `claude/issue-9-review-fixes`)
+
+PR #17 merged into `epic/accounts`; code review found the items below, fixed
+in a follow-up PR against `epic/accounts`.
+
+- `getAuth()` awaits `getDb()` (and so `connection()`) on every call before
+  touching its cache, and passes the handle to `createAuth(db)`.
+  `betterAuth()` is synchronous, so the instance itself is cached, not a
+  promise, and a failed build (missing secret) caches nothing.
+- The instance is cached at module scope; the database stays on
+  `globalThis`. Checked with a temporary probe: `next start` builds one
+  instance shared by two routes; in `next dev` an edit to `auth.ts` rebuilds
+  it (once per route that imports it), then it stays put.
+- `better-auth` and `@better-auth/passkey` pinned to `~1.7.20`; installed
+  version unchanged (1.7.20).
+- `scripts/check-auth.ts` now asserts the `EMAIL_PASSWORD_SIGN_UP_DISABLED`
+  code, cookie cache off, `expiresIn` of 90 days, renew-on-use through
+  `get-session` with a signed cookie, and that a fresh process with
+  `NODE_ENV=production` and no secret gets a rejection from `getAuth()`.
+  Each new assertion was seen failing against a deliberately broken config.
+  Passes on PGlite and on a local Postgres 16 through postgres-js.
+- Warning in `.env.example` and `src/lib/auth.ts`: no Google credentials on
+  any deployment until #10's invite-only rule is merged. #10 removes it.
+- Epic now says each task adds its own migration and merged migrations are
+  never rewritten.
+
+Status stays in-progress until the follow-up PR merges.

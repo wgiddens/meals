@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { getDb, schema } from "@/db";
+import { getDb, schema, type Db } from "@/db";
 
 /**
  * Accounts and sign-in, provided by Better Auth and stored in our own
@@ -35,8 +35,7 @@ export function googleConfig(): { clientId: string; clientSecret: string } | nul
   return clientId && clientSecret ? { clientId, clientSecret } : null;
 }
 
-async function createAuth() {
-  const db = await getDb();
+function createAuth(db: Db) {
   const google = googleConfig();
   return betterAuth({
     secret: authSecret(),
@@ -52,6 +51,9 @@ async function createAuth() {
     }),
     // No passwords: people sign in with Google (and, later, passkeys).
     emailAndPassword: { enabled: false },
+    // WARNING: until the invite-only rule from issue #10 is merged, any Google
+    // account can create a user here. Do not set GOOGLE_CLIENT_ID or
+    // GOOGLE_CLIENT_SECRET on any deployment before then (see .env.example).
     socialProviders: google ? { google } : {},
     session: {
       expiresIn: SESSION_MAX_AGE_SECONDS,
@@ -63,20 +65,29 @@ async function createAuth() {
   });
 }
 
-export type Auth = Awaited<ReturnType<typeof createAuth>>;
+export type Auth = ReturnType<typeof createAuth>;
 
-declare global {
-  var __mealsAuth: Promise<Auth> | undefined;
-}
+/**
+ * The configured instance, kept at module scope rather than on globalThis so
+ * that editing this file in `next dev` rebuilds it on the next request. The
+ * database connection underneath is the long-lived part, and getDb() already
+ * keeps that on globalThis. Under `next start` this module is evaluated once,
+ * so there is one instance per server process. In `next dev`, an edit gives
+ * each route that imports this module its own fresh instance, all sharing the
+ * one database connection.
+ */
+let cached: { db: Db; auth: Auth } | undefined;
 
 /** Returns the shared Better Auth instance, creating it on first call. */
 export async function getAuth(): Promise<Auth> {
-  // Cached on globalThis so Next.js dev hot-reloads reuse one instance.
-  if (!globalThis.__mealsAuth) {
-    globalThis.__mealsAuth = createAuth().catch((err) => {
-      globalThis.__mealsAuth = undefined;
-      throw err;
-    });
+  // Always go through getDb() first: inside Next.js it awaits connection(),
+  // which makes every caller request-time, not just the first one.
+  const db = await getDb();
+  if (cached?.db !== db) {
+    // betterAuth() is synchronous, so there is no promise to cache and no
+    // window where a half-built instance could be shared. If authSecret()
+    // throws, nothing is cached and the next call tries again.
+    cached = { db, auth: createAuth(db) };
   }
-  return globalThis.__mealsAuth;
+  return cached.auth;
 }
