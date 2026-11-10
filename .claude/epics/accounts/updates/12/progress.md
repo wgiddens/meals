@@ -19,7 +19,7 @@ Files touched are only those the spec lists.
   not committed): two Better Auth instances built by our own `getAuth()`,
   a fixed "proxy" deployment and a preview, each with its own temporary
   PGlite, `NODE_ENV=production`, Vercel-style env, and Google's token
-  endpoint stubbed. 30 checks pass:
+  endpoint stubbed. 31 checks pass:
   - sign-in starts on the preview and Google is given
     `<OAUTH_PROXY_URL>/api/auth/callback/google`; the proxy exchanges the
     code with the same `redirect_uri`;
