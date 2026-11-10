@@ -2,7 +2,7 @@
 name: accounts
 status: in-progress
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T21:07:31Z
+updated: 2026-11-10T21:39:16Z
 progress: 25%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
@@ -138,9 +138,12 @@ is built on first use behind a `getAuth()` function, the same pattern as
   is a manual step for the repo owner.
 - **CI:** no new secrets. Checks run with no Google configuration, using the
   embedded database.
-- **Preview deployments:** Google sign-in and passkeys are tied to one site
-  address, so they work on the production domain only. Previews show the
-  "not configured" page unless given their own configuration.
+- **Preview deployments:** Google sign-in works on Vercel previews through
+  Better Auth's `oAuthProxy` plugin (the stakeholder's decision, during #11):
+  Google always redirects to one fixed URL, which hands the sign-in back to
+  the preview. Until the epic reaches `main`, that fixed URL is the stable
+  `epic/accounts` preview. Previews need their own sign-in variables and must
+  never use the production database. Passkeys stay tied to one domain.
 
 ## Implementation Strategy
 
