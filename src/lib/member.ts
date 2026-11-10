@@ -9,10 +9,10 @@ import { gateMode } from "@/lib/gate";
 export { devOwnerAllowed, gateMode, safeReturnPath, type GateMode } from "@/lib/gate";
 
 /**
- * Who is signed in. These functions are the security boundary: src/proxy.ts
- * only turns away requests with no session cookie, as a convenience, so every
- * Server Action and API route must call requireMember() or requireOwner()
- * itself.
+ * Who is signed in. src/proxy.ts calls memberForRequest() on every gated
+ * request, so pages are protected by the proxy. Server Actions and API routes
+ * still call requireMember() or requireOwner() themselves, as a second check
+ * that does not depend on the proxy's matcher.
  *
  * They read the request (headers and the database), so a page that calls
  * them renders them inside <Suspense>. Never call them inside a
@@ -93,12 +93,23 @@ export async function ensureDevOwner(db?: Db): Promise<Member> {
  * it is always null, so nothing is accessible.
  */
 export async function currentMember(): Promise<Member | null> {
+  return memberForRequest(await headers());
+}
+
+/**
+ * currentMember() for a request whose headers are passed in, for src/proxy.ts,
+ * which has the request but cannot use next/headers. With sign-in configured
+ * this looks the session up in the database through Better Auth (the cookie
+ * cache is off), so a forged cookie, an expired session and the cookie of a
+ * removed member all give null.
+ */
+export async function memberForRequest(requestHeaders: Headers): Promise<Member | null> {
   const mode = gateMode(process.env);
   if (mode === "dev-owner") return ensureDevOwner();
   if (mode === "closed") return null;
 
   const auth = await getAuth();
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await auth.api.getSession({ headers: requestHeaders });
   if (!session) return null;
   const { id, name, email, role } = session.user;
   return { id, name, email, role: role as Role };
