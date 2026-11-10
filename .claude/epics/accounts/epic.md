@@ -2,8 +2,8 @@
 name: accounts
 status: in-progress
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-10T20:25:26Z
-progress: 12%
+updated: 2026-11-10T20:58:45Z
+progress: 25%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
 ---
