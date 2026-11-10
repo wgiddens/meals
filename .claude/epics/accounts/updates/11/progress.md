@@ -107,9 +107,15 @@ first review's three findings are fixed (see "Review fixes").
 3. **Stale comments** reworded in `gate.ts`, `actions.ts` and the import
    and plate routes.
 
+## Will's decisions on the held items
+- `/api/auth/*` stays reachable in closed mode, as built.
+- The dev shortcut reusing an existing owner is accepted as built. #16's
+  docs will warn never to run a dev server against the production
+  database.
+
 ## Open
-- Waiting on Will (the orchestrator is asking): `/api/auth/*` staying
-  reachable in closed mode, and the dev-owner reuse of an existing owner.
+- Nothing for this PR. `requireOwner()` gets an automated check when #14
+  first calls it.
 - `requireOwner()` has no automated check yet: it needs request headers,
   and nothing calls it until the family page (#14).
 
