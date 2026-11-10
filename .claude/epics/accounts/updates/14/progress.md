@@ -18,5 +18,12 @@ Both streams done on branch `claude/issue-14-family-page`; draft PR into
 - Checked by hand on `next dev` (dev owner, then sign-in mode with a seeded
   member session) at 375 px. See `stream-A.md`.
 
+## Review fixes (PR #22)
+- Invite inputs are now 16 px (`text-base`) so iOS Safari doesn't zoom on focus.
+- Invite email capped at 254 characters: `maxLength` on the input, and the
+  action returns "That email address is too long." as a form error. The name
+  was already capped at 100 (input and `src/lib/family.ts`).
+- Checked on `next dev` at 375 px; typecheck, lint, smoke and build pass.
+
 ## Remaining
 - Review, then the orchestrator marks the PR ready and the stakeholder merges.

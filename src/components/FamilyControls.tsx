@@ -18,6 +18,9 @@ import {
 
 const TAP = "min-h-11 min-w-11";
 
+/** The longest valid email address (RFC 5321); the invite action enforces it too. */
+const MAX_EMAIL_LENGTH = 254;
+
 function FormError({ id, message }: { id: string; message?: string }) {
   return (
     <p id={id} role="alert" aria-live="polite" className="text-sm text-red-700 empty:hidden">
@@ -43,7 +46,7 @@ export function InviteForm({ appUrl }: { appUrl: string }) {
               maxLength={100}
               autoComplete="off"
               defaultValue={values?.name ?? ""}
-              className={`input ${TAP}`}
+              className={`input ${TAP} text-base`}
             />
           </label>
           <label className="block space-y-1">
@@ -52,12 +55,13 @@ export function InviteForm({ appUrl }: { appUrl: string }) {
               name="email"
               type="email"
               required
+              maxLength={MAX_EMAIL_LENGTH}
               inputMode="email"
               autoComplete="off"
               autoCapitalize="none"
               spellCheck={false}
               defaultValue={values?.email ?? ""}
-              className={`input ${TAP}`}
+              className={`input ${TAP} text-base`}
             />
           </label>
         </div>

@@ -53,6 +53,10 @@ export async function inviteMemberAction(
   const owner = await requireOwner();
   const name = field(formData, "name");
   const email = field(formData, "email");
+  // The longest valid address (RFC 5321). src/lib/family.ts caps the name.
+  if (email.trim().length > 254) {
+    return { error: "That email address is too long.", values: { name, email } };
+  }
   try {
     const invitation = await inviteMember(owner, { name, email });
     revalidatePath("/family");
