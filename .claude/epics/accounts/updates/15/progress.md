@@ -1,14 +1,14 @@
 ---
 issue: 15
 started: 2026-11-10T21:41:08Z
-last_sync: 2026-11-10T21:41:08Z
+last_sync: 2026-11-10T22:05:00Z
 completion: 90%
 ---
 
 # Issue #15: Automated checks for the account rules
 
 Stream A in `15-analysis.md` is implemented on
-`claude/issue-15-account-checks` (see `stream-A.md`). Draft PR next.
+`claude/issue-15-account-checks` (see `stream-A.md`). Draft PR #23 into `epic/accounts`, awaiting review.
 
 ## Verified
 - `npm run typecheck`, `npm run lint`, `npm run smoke` (check:import,
@@ -25,3 +25,5 @@ Stream A in `15-analysis.md` is implemented on
 ## Not changed
 - `scripts/check-auth.ts` keeps its overlapping family-rule assertions;
   see the PR's "Decisions and open questions".
+
+<!-- SYNCED: 2026-11-10T22:05:00Z -->
