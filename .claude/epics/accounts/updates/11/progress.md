@@ -15,7 +15,7 @@ first review's three findings are fixed (see "Review fixes").
 ## Verified
 - `npm run typecheck`, `npm run lint`, `npm run smoke` and
   `env -u DATABASE_URL npm run build` pass. Smoke runs 350 checks:
-  check:import, check:auth and smoke.ts.
+  check:import, check:auth and smoke.ts (348 after the re-check fix).
 - `check:auth` also passes against a throwaway local Postgres 16
   (`CHECK_AUTH_DATABASE_URL`, 104 checks).
 - `check:auth` calls `proxy()` directly with a `NextRequest`:
@@ -106,6 +106,19 @@ first review's three findings are fixed (see "Review fixes").
      unchanged.
 3. **Stale comments** reworded in `gate.ts`, `actions.ts` and the import
    and plate routes.
+
+## Re-check fix
+- The re-check approved, with one minor finding: the Server Action scan in
+  smoke could be fooled by `export const x = async () => {}`, a comment
+  before `"use server"`, `export default`, or an inline `"use server"` in
+  a page. The scan now fails closed:
+  - it finds the directive after leading comments;
+  - any export in an action file other than a guarded `export async
+    function` (or a type) is a problem;
+  - any `"use server"` that isn't the file's first statement is a
+    problem.
+- Fixture strings in smoke show each bypass is caught. Each was also
+  applied to the real tree by hand and failed `npm run smoke`.
 
 ## Will's decisions on the held items
 - `/api/auth/*` stays reachable in closed mode, as built.
