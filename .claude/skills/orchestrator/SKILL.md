@@ -23,8 +23,13 @@ differ from ccpm".
 - **Ask rather than guess.** Anything that depends on intent, a product
   decision, or a trade-off Will hasn't made goes to Will, with the options and
   your recommendation. Be quick to ask.
-- **Will approves PRs; you merge them.** Never merge a PR Will has not
-  approved on GitHub. Never approve one yourself.
+- **Will merges PRs; you never do.** Every chat here opens PRs as Will's
+  GitHub account, and GitHub won't let him approve his own PRs, so his merge
+  is the approval. Your job is to make sure a PR is truly ready before you
+  hand it to him.
+- **PRs stay drafts until they are ready to merge.** Implementation chats open
+  PRs as drafts. You mark a PR ready for review only once its review is done,
+  every clear-cut fix is in, and Will has answered every questionable finding.
 - **Implementation and review each happen in their own separate chat**
   (`create_session`), never in a subagent and never by you. You coordinate,
   verify and keep the records.
@@ -46,7 +51,7 @@ differ from ccpm".
   body says `Refs #<N>`, not `Closes`: GitHub only auto-closes on the default
   branch, and the orchestrator closes issues through ccpm's close step.
 - **One final PR per epic** from `epic/<name>` into `main`, once every task
-  is closed. Will approves it; you merge it.
+  is closed. It gets the same review, and Will merges it.
 - Follow-up fixes to an already-merged task get their own PR into
   `epic/<name>`, referencing the same issue.
 - Small ccpm bookkeeping commits (closing a task, epic progress) go straight
@@ -81,53 +86,62 @@ set to `epic/<name>`, and `outcome_branch` set to
 a fallback check-in with `send_later` about 45 minutes out, because a child
 chat that finishes cleanly may not report back.
 
-### 4. When the PR opens
+### 4. When the (draft) PR opens
 - Subscribe to the PR with `subscribe_pr_activity`.
 - Start the review chat with `create_session` and the review brief below.
   Give it the PR and the spec, not your own conclusions.
+- The review chat posts its findings as a comment on the PR, then posts a
+  separate "review done" comment, and also messages you.
 
 ### 5. Triage the review
 - Check every finding against the code yourself before acting on it.
 - **Clear-cut and confirmed:** send it to the implementation chat
-  (`send_message`) to fix on the same PR, then have the review chat re-check
-  the fixes.
+  (`send_message`) to fix on the same PR. Then have the review chat re-check
+  the fixes, posting a findings comment and a "review done" comment again.
 - **Questionable** (depends on intent, product behaviour or an unconfirmed
   library behaviour): ask Will with `AskUserQuestion`. He is the tie-breaker.
+- Minor findings Will agrees can wait go into the next suitable task's spec
+  (task file and issue body) rather than a separate PR.
 - No blockers, nothing left open: go to step 6.
 
 ### 6. Hand to Will
-Tell Will the PR is ready for his approval. Include:
-- the link
-- a one-paragraph summary
-- the review outcome
-- what was fixed
-- anything left unverified, such as no real Neon test
+1. Mark the PR ready for review: take it out of draft.
+2. Tell Will it's ready for him to merge. Include:
+   - the link
+   - a one-paragraph summary
+   - the review outcome
+   - what was fixed
+   - anything left unverified, such as no real Neon test
 
-### 7. Merge and close
-After Will approves on GitHub:
-1. Merge the PR into `epic/<name>`.
-2. Run ccpm's close step (`references/sync.md`, "Closing an Issue"):
+### 7. Close
+After Will merges the PR into `epic/<name>`:
+1. Run ccpm's close step (`references/sync.md`, "Closing an Issue"):
    - set `status: closed` and `updated:` in the task file and commit it to
      `epic/<name>`
    - post a completion comment, close the issue and remove the `in-progress`
      label
-   - tick the task off in the epic issue's body
-3. Archive the finished implementation and review chats.
-4. Go back to step 1.
+   - the epic issue tracks tasks as sub-issues, so closing the issue ticks
+     it off
+   - if review notes changed later task files, update those issues' bodies
+     to match (the task file minus its frontmatter)
+2. Archive the finished implementation and review chats, and cancel any
+   pending check-ins for them.
+3. Go back to step 1.
 
 ## Epic completion
 When every task is closed:
 1. Run the full checks in the epic worktree.
-2. Open the final PR from `epic/<name>` into `main`. List the env vars and
-   manual deploy steps the epic needs; the last task usually documents them.
-3. Will approves it, and you merge it.
+2. Open the final PR from `epic/<name>` into `main` as a draft. List the env
+   vars and manual deploy steps the epic needs; the last task usually
+   documents them.
+3. Have it reviewed as usual, mark it ready, and Will merges it.
 4. Do ccpm's merge cleanup: `neon-branch.sh cleanup`, remove the worktree,
    delete `epic/<name>`, archive the epic folder, close the epic issue, and
    set `status: completed`.
 
 ## When to bring Will in
 - A questionable review finding, or a worker's question about intent or scope.
-- A PR ready for his approval.
+- A PR ready for him to merge.
 - The task spec, epic, PRD or `docs/PRODUCT.md` contradict each other.
 - A worker is stuck, or a task can't be done as specified (for example, the
   spec says "stop and report").
@@ -142,8 +156,8 @@ is enough.
 > You are implementing GitHub issue wgiddens/meals#<N>, "<title>", in the
 > <epic> epic (wgiddens/meals#<epic N>). An orchestrator session (`<my session
 > id>`) is coordinating this work for the stakeholder, Will. You implement the
-> task and open a PR. A separate reviewer checks it, Will approves it, and the
-> orchestrator merges it.
+> task and open a draft PR. A separate reviewer checks it, the orchestrator
+> marks it ready, and Will merges it.
 >
 > **Read first:**
 > - `CLAUDE.md` and `AGENTS.md`, then `docs/PRODUCT.md`.
@@ -164,8 +178,9 @@ is enough.
 > pass.
 >
 > **PR:**
-> - Into `epic/<name>`, titled `Issue #<N>: <title>`, with `Refs #<N>` and
->   following the PR template.
+> - Open it as a **draft** into `epic/<name>`, titled `Issue #<N>: <title>`,
+>   with `Refs #<N>`, following the PR template. Leave it as a draft; the
+>   orchestrator marks it ready. Never merge it.
 > - Include a checklist of the acceptance criteria with evidence, and a
 >   "Decisions and open questions" section.
 > - Then post one progress comment on issue #<N> in ccpm's issue-sync
@@ -184,8 +199,9 @@ is enough.
 
 > You are reviewing PR wgiddens/meals#<PR> (issue #<N>, "<title>"). It merges
 > `claude/issue-<N>-<slug>` into `epic/<name>`. An orchestrator session (`<my
-> session id>`) is coordinating this work for the stakeholder, Will. This
-> review is read-only: do not commit, push, or post on GitHub.
+> session id>`) is coordinating this work for the stakeholder, Will. Don't
+> commit, push, approve, merge, or change the PR's draft state. Your only
+> writes are the two PR comments described under "Report back".
 >
 > **Judge it against:**
 > - the task spec `.claude/epics/<epic>/<N>.md`, checking every acceptance
@@ -212,13 +228,24 @@ is enough.
 > Mark a finding **questionable** whenever it depends on intent, a product
 > decision, or a library behaviour you could not confirm. Don't guess.
 >
-> **Report back:** send the orchestrator a message (`send_message` to `<my
-> session id>`) with the findings, the check results and a one-line verdict.
-> Stay available: the orchestrator may ask you to re-check fixes.
+> **Report back:**
+> 1. Post your full review as one comment on the PR (`add_issue_comment` with
+>    the PR number). It opens with "Code review (review chat)" and contains
+>    the findings, the check results and a one-line verdict.
+> 2. Post a second, short comment: "Review done. Verdict: <verdict>. <n>
+>    findings (<blockers> blocker, <should-fix> should-fix, <minor>
+>    minor)."
+> 3. Send the orchestrator the same findings (`send_message` to `<my session
+>    id>`).
+>
+> End each comment with the attribution footer your system prompt requires.
+> Stay available: the orchestrator may ask you to re-check fixes. For each
+> re-check, post a new findings comment and a new "review done" comment.
 
 ## Where we differ from ccpm
 - **Code review.** ccpm has no review step; its Definition of Done just says
-  "Code reviewed". We add a review chat plus Will's approval on each PR.
+  "Code reviewed". We add a review chat, whose review is posted on the PR,
+  and Will merges each PR himself.
 - **Who implements.** ccpm's execute step has agents commit straight to the
   epic branch. We have a separate chat open a PR per task into
   `epic/<name>`.
@@ -240,3 +267,11 @@ Add one line per lesson: date, what happened, and the rule it changed.
   subagent.
 - 2026-11-10: Will decided each task adds its own Drizzle migration, and an
   applied migration is never rewritten.
+- 2026-11-10: Will merged PR #18 before its review finished: GitHub won't let
+  him approve PRs his account authored, and every chat here authors as him.
+  Rules changed: Will merges (his merge is the approval); PRs open as drafts,
+  and the orchestrator marks them ready only after review.
+- 2026-11-10: Will asked that the review chat post its findings on the PR,
+  plus a "review done" comment, so the review is visible on GitHub.
+- 2026-11-10: Minor review findings that can wait go into the next suitable
+  task's spec, not a separate follow-up PR (#9's went into #10, #11 and #12).
