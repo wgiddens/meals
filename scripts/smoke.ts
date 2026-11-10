@@ -82,6 +82,47 @@ async function main() {
     );
   }
 
+  // /api/mcp's bearer check. Production with no key refuses every request,
+  // with or without a token; development with no key is open.
+  const { verifyMcpToken } = await import("@/lib/mcp-auth");
+  for (const token of [undefined, "", "anything"]) {
+    assert(
+      verifyMcpToken(token, { NODE_ENV: "production" }) === undefined,
+      `MCP: production with no key refuses token ${JSON.stringify(token)}`,
+    );
+  }
+  assert(verifyMcpToken(undefined, { NODE_ENV: "development" })?.clientId === "local", "MCP: development with no key is open");
+  const keyed = { NODE_ENV: "production", MCP_API_KEY: "k-123" };
+  assert(verifyMcpToken("k-123", keyed)?.token === "k-123", "MCP: the right key is accepted");
+  for (const token of [undefined, "k-12", "k-1234", "K-123"]) {
+    assert(verifyMcpToken(token, keyed) === undefined, `MCP: token ${JSON.stringify(token)} is refused when a key is set`);
+  }
+
+  // Every exported Server Action starts with requireMember() (or
+  // requireOwner()), in every "use server" file under src. Read from source
+  // because calling them needs a Next.js request.
+  const sourceFiles = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) return sourceFiles(full);
+      return /\.(ts|tsx)$/.test(e.name) ? [full] : [];
+    });
+  let actionCount = 0;
+  for (const file of sourceFiles(path.join(process.cwd(), "src"))) {
+    const source = fs.readFileSync(file, "utf8");
+    if (!/^\s*["']use server["']/.test(source)) continue;
+    const exported = [...source.matchAll(/export\s+async\s+function\s+(\w+)/g)].map((m) => m[1]);
+    assert(exported.length > 0, `${path.relative(process.cwd(), file)} exports Server Actions`);
+    for (const name of exported) {
+      const guarded = new RegExp(
+        `export\\s+async\\s+function\\s+${name}\\s*\\([^)]*\\)[^{]*\\{\\s*(const\\s+\\w+\\s*=\\s*)?await\\s+require(Member|Owner)\\(\\);`,
+      );
+      assert(guarded.test(source), `Server Action ${name} starts with requireMember() or requireOwner()`);
+      actionCount++;
+    }
+  }
+  assert(actionCount >= 9, `found the Server Actions to check (${actionCount})`);
+
   // The dev owner is created on first use, with the family row, and reused.
   const { ensureDevOwner, DEV_OWNER } = await import("@/lib/member");
   const { listFamily } = await import("@/lib/family");

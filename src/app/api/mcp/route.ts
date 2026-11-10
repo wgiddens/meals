@@ -34,6 +34,7 @@ import {
   type RecipeWithIngredients,
 } from "@/lib/recipes";
 import { formatIngredient } from "@/lib/format";
+import { verifyMcpToken } from "@/lib/mcp-auth";
 import type { GroceryItem } from "@/db/schema";
 
 /**
@@ -670,31 +671,11 @@ const handler = createMcpHandler(
 );
 
 /**
- * Bearer-token auth. Set MCP_API_KEY in the environment and give that value
- * to each assistant as its bearer token. If it isn't set, the endpoint is open
- * outside production (local development needs no setup) and refuses every
- * request in production, so assistants cannot get round the account sign-in.
- * Both are read per request, and `required` makes every refusal a 401.
+ * Bearer-token auth (see verifyMcpToken). It reads MCP_API_KEY per request;
+ * `required` makes every refusal, including production with no key, a 401.
  */
-const authed = withMcpAuth(
-  handler,
-  (_req, token) => {
-    const expected = process.env.MCP_API_KEY;
-    if (!expected) {
-      if (process.env.NODE_ENV === "production") return undefined;
-      return { token: "anonymous", clientId: "local", scopes: ["household"] };
-    }
-    if (!token || !constantTimeEqual(token, expected)) return undefined;
-    return { token, clientId: "household", scopes: ["household"] };
-  },
-  { required: true },
-);
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
+const authed = withMcpAuth(handler, (_req, token) => verifyMcpToken(token, process.env), {
+  required: true,
+});
 
 export { authed as GET, authed as POST, authed as DELETE };

@@ -97,22 +97,42 @@ export async function currentMember(): Promise<Member | null> {
 }
 
 /**
- * currentMember() for a request whose headers are passed in, for src/proxy.ts,
- * which has the request but cannot use next/headers. With sign-in configured
- * this looks the session up in the database through Better Auth (the cookie
- * cache is off), so a forged cookie, an expired session and the cookie of a
- * removed member all give null.
+ * currentMember() for a request whose headers are passed in. With sign-in
+ * configured this looks the session up in the database through Better Auth
+ * (the cookie cache is off), so a forged cookie, an expired session and the
+ * cookie of a removed member all give null.
  */
 export async function memberForRequest(requestHeaders: Headers): Promise<Member | null> {
+  return (await lookUpMember(requestHeaders)).member;
+}
+
+/** What src/proxy.ts needs from a session lookup. */
+export type MemberLookup = {
+  member: Member | null;
+  /**
+   * Set-Cookie values Better Auth produced: the renewed session cookie when
+   * the session was extended (about once a day), or an expiring one for a
+   * session that is gone. The proxy passes them on to the browser, so a
+   * session that renews in the database renews in the browser too.
+   */
+  setCookies: string[];
+};
+
+/** memberForRequest(), plus the cookies Better Auth wants to set. */
+export async function lookUpMember(requestHeaders: Headers): Promise<MemberLookup> {
   const mode = gateMode(process.env);
-  if (mode === "dev-owner") return ensureDevOwner();
-  if (mode === "closed") return null;
+  if (mode === "dev-owner") return { member: await ensureDevOwner(), setCookies: [] };
+  if (mode === "closed") return { member: null, setCookies: [] };
 
   const auth = await getAuth();
-  const session = await auth.api.getSession({ headers: requestHeaders });
-  if (!session) return null;
+  const { headers, response: session } = await auth.api.getSession({
+    headers: requestHeaders,
+    returnHeaders: true,
+  });
+  const setCookies = headers.getSetCookie();
+  if (!session) return { member: null, setCookies };
   const { id, name, email, role } = session.user;
-  return { id, name, email, role: role as Role };
+  return { member: { id, name, email, role: role as Role }, setCookies };
 }
 
 /** The signed-in member; throws NotSignedInError when there is none. */

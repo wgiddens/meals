@@ -9,7 +9,7 @@ import { NotSignedInError, requireMember } from "@/lib/member";
  * photo endpoint returns, so the form pre-fills the same way.
  */
 export async function POST(req: Request) {
-  // proxy.ts already answers 401 without a session cookie; this is the real check.
+  // proxy.ts already checks the session; this second check does not depend on its matcher.
   try {
     await requireMember();
   } catch (err) {

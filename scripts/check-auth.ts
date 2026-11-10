@@ -463,16 +463,34 @@ async function main() {
   const { proxy } = await import("@/proxy");
   const { NextRequest } = await import("next/server");
   const { memberForRequest } = await import("@/lib/member");
-  const signInMode = async <T>(fn: () => Promise<T>): Promise<T> => {
-    process.env.GOOGLE_CLIENT_ID = "check-id";
-    process.env.GOOGLE_CLIENT_SECRET = "check-secret";
+  const env = process.env as Record<string, string | undefined>;
+  /** Runs fn with these environment variables, restoring them afterwards. */
+  const withEnv = async <T>(vars: Record<string, string | undefined>, fn: () => Promise<T>): Promise<T> => {
+    const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, env[k]]));
+    const apply = (values: Record<string, string | undefined>) => {
+      for (const [k, v] of Object.entries(values)) {
+        if (v === undefined) delete env[k];
+        else env[k] = v;
+      }
+    };
+    apply(vars);
     try {
       return await fn();
     } finally {
-      delete process.env.GOOGLE_CLIENT_ID;
-      delete process.env.GOOGLE_CLIENT_SECRET;
+      apply(saved);
     }
   };
+  const google = { GOOGLE_CLIENT_ID: "check-id", GOOGLE_CLIENT_SECRET: "check-secret" };
+  const signInMode = <T>(fn: () => Promise<T>) => withEnv(google, fn);
+  /** Production with Google but no BETTER_AUTH_SECRET: gateMode is "closed". */
+  const closedMode = <T>(fn: () => Promise<T>) =>
+    withEnv({ ...google, NODE_ENV: "production", BETTER_AUTH_SECRET: undefined }, fn);
+  const callProxy = (pathname: string, cookieHeader?: string) =>
+    proxy(
+      new NextRequest(`http://localhost:3000${pathname}`, {
+        headers: cookieHeader ? { cookie: cookieHeader } : {},
+      }),
+    );
   const throughProxy = (pathname: string, cookieHeader?: string) =>
     signInMode(() =>
       proxy(
@@ -482,13 +500,14 @@ async function main() {
       ),
     );
   /** "through", "401", or the redirect's path and query. */
-  const proxyOutcome = async (pathname: string, cookieHeader?: string) => {
-    const res = await throughProxy(pathname, cookieHeader);
+  const outcomeOf = (res: Response) => {
     if (res.headers.get("x-middleware-next") === "1") return "through";
     if (res.status === 401) return "401";
     const location = res.headers.get("location");
     return location ? new URL(location).pathname + new URL(location).search : `status ${res.status}`;
   };
+  const proxyOutcome = async (pathname: string, cookieHeader?: string) =>
+    outcomeOf(await throughProxy(pathname, cookieHeader));
   const forged = `${ctx.authCookies.sessionToken.name}=${encodeURIComponent(`${session.token}.forged-signature`)}`;
   const madeUp = `${ctx.authCookies.sessionToken.name}=made-up`;
   assert((await proxyOutcome("/plan", cookie)) === "through", "proxy: a member's session cookie gets to /plan");
@@ -502,6 +521,58 @@ async function main() {
   for (const exempt of ["/sign-in", "/api/auth/get-session", "/api/mcp", "/.well-known/oauth-protected-resource"]) {
     assert((await proxyOutcome(exempt)) === "through", `proxy: ${exempt} is reachable signed out`);
   }
+  // Only the exact exempt paths are exempt, not anything that starts the same.
+  for (const [lookAlike, expected] of [
+    ["/api/auth", "401"],
+    ["/api/authx", "401"],
+    ["/api/authx/get-session", "401"],
+    ["/api/mcpx", "401"],
+    ["/sign-inx", "/sign-in?next=%2Fsign-inx"],
+    ["/sign-in/x", "/sign-in?next=%2Fsign-in%2Fx"],
+    ["/.well-knownx", "/sign-in?next=%2F.well-knownx"],
+  ] as const) {
+    const got = await proxyOutcome(lookAlike);
+    assert(got === expected, `proxy: look-alike path ${lookAlike} is not exempt (got ${got})`);
+  }
+
+  // Production with sign-in not configured: a valid cookie gets nowhere.
+  const closedPage = outcomeOf(await closedMode(() => callProxy("/plan", cookie)));
+  assert(closedPage === "/sign-in?next=%2Fplan", `proxy: closed mode redirects even a valid cookie (got ${closedPage})`);
+  const closedApi = outcomeOf(await closedMode(() => callProxy("/api/import", cookie)));
+  assert(closedApi === "401", `proxy: closed mode answers 401 to /api/* even with a valid cookie (got ${closedApi})`);
+  assert(
+    (await closedMode(() => memberForRequest(new Headers({ cookie })))) === null,
+    "memberForRequest returns null in closed mode, even for a valid cookie",
+  );
+
+  // Renewal reaches the browser: with the session pulled back to 30 days,
+  // a request through the proxy renews the row to 90 days and passes the
+  // renewed cookie on.
+  await db
+    .update(schema.session)
+    .set({ expiresAt: new Date(Date.now() + 30 * DAY_MS) })
+    .where(eq(schema.session.token, session.token));
+  const renewedThroughProxy = await throughProxy("/plan", cookie);
+  assert(outcomeOf(renewedThroughProxy) === "through", "proxy: the backdated session still gets through");
+  const proxyRenewedDays = await daysLeft();
+  assert(
+    Math.abs(proxyRenewedDays - 90) < 0.01,
+    `proxy: the session row is renewed to 90 days (got ${proxyRenewedDays.toFixed(2)})`,
+  );
+  const renewedCookie = renewedThroughProxy.headers
+    .getSetCookie()
+    .find((c) => c.startsWith(`${ctx.authCookies.sessionToken.name}=`));
+  const maxAge = Number(/max-age=(\d+)/i.exec(renewedCookie ?? "")?.[1]);
+  assert(
+    renewedCookie?.includes(encodeURIComponent(signed)) && Math.abs(maxAge - SESSION_MAX_AGE_SECONDS) < 5,
+    `proxy: the response sets the renewed session cookie for 90 days (got ${renewedCookie ?? "no cookie"})`,
+  );
+  const notRenewedAgain = await throughProxy("/plan", cookie);
+  assert(
+    notRenewedAgain.headers.getSetCookie().length === 0,
+    "proxy: a session renewed less than a day ago sets no cookie",
+  );
+
   const viaProxy = await signInMode(() => memberForRequest(new Headers({ cookie })));
   assert(
     viaProxy?.id === member.id && viaProxy.role === "member" && viaProxy.email === email,

@@ -13,7 +13,7 @@ const MAX_BYTES = 8 * 1024 * 1024;
  * Returns a recipe draft as JSON. The recipe form on /recipes/new uses this.
  */
 export async function POST(req: Request) {
-  // proxy.ts already answers 401 without a session cookie; this is the real check.
+  // proxy.ts already checks the session; this second check does not depend on its matcher.
   try {
     await requireMember();
   } catch (err) {

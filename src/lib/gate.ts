@@ -1,9 +1,8 @@
 /**
  * The sign-in gate's decisions, as pure functions of the environment.
  *
- * Kept apart from src/lib/member.ts so src/proxy.ts can import them without
- * pulling in Better Auth and the database, and so checks can call them
- * without a Next.js request.
+ * Kept apart from src/lib/member.ts, with no Better Auth, database or
+ * Next.js request APIs, so checks can call them with any environment.
  */
 
 type Env = Readonly<Record<string, string | undefined>>;

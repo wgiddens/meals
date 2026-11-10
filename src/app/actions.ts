@@ -23,9 +23,10 @@ import {
 
 /**
  * Server Actions. These are the only way the UI writes to the database.
- * Each one starts with requireMember(): proxy.ts turns away requests with no
- * session cookie, but actions are plain POSTs and must check for a signed-in
- * member themselves.
+ * Each one starts with requireMember(). proxy.ts already looks the session
+ * up, but actions are POSTs to whatever page uses them, so each one checks
+ * for a signed-in member itself rather than rely on the proxy's matcher.
+ * scripts/smoke.ts fails if an exported action does not start this way.
  */
 
 export type ActionState = { error?: string; fieldErrors?: Record<string, string> } | null;
