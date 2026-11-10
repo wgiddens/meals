@@ -1,7 +1,7 @@
 ---
 issue: 11
 started: 2026-11-10T20:59:18Z
-last_sync: 2026-11-10T20:59:18Z
+last_sync: 2026-11-10T21:16:00Z
 completion: 95%
 ---
 
@@ -82,3 +82,5 @@ for review.
   `nextCookies()` plugin may be worth adding with the sign-in page (#12).
 - `requireOwner()` has no automated check yet: it needs request headers,
   and nothing calls it until the family page (#14).
+
+<!-- SYNCED: 2026-11-10T21:16:00Z -->
