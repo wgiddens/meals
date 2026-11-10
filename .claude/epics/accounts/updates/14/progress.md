@@ -2,9 +2,19 @@
 issue: 14
 started: 2026-11-10T21:41:08Z
 last_sync: 2026-11-10T21:41:08Z
-completion: 0%
+completion: 90%
 ---
 
 # Issue #14: Family page: members, invitations and owner controls
 
-Implementation chat starting on branch `claude/issue-14-family-page`.
+Both streams done on branch `claude/issue-14-family-page`; draft PR into
+`epic/accounts` awaiting review.
+
+## Done
+- Server Actions (`src/app/family/actions.ts`), all starting with `requireOwner()`.
+- `/family` page, loading state and owner controls.
+- Checked by hand on `next dev` (dev owner, then sign-in mode with a seeded
+  member session) at 375 px. See `stream-A.md`.
+
+## Remaining
+- Review, then the orchestrator marks the PR ready and the stakeholder merges.

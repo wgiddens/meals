@@ -22,15 +22,18 @@ import { requireOwner } from "@/lib/member";
  * thrown.
  */
 
-export type FamilyFormState = {
+type FormResult = {
   error?: string;
   /** What was typed, so a refused form keeps it. */
   values?: Record<string, string>;
-} | null;
+};
+
+export type FamilyFormState = FormResult | null;
 
 export type InviteFormState =
-  | (FamilyFormState & { invited?: undefined })
-  | { invited: { name: string; email: string }; error?: undefined; values?: undefined };
+  | (FormResult & { invited?: undefined })
+  | { invited: { name: string; email: string }; error?: undefined; values?: undefined }
+  | null;
 
 function field(formData: FormData, name: string): string {
   const value = formData.get(name);
