@@ -5,6 +5,7 @@ import { isGateEnabled, SESSION_COOKIE, verifySessionToken } from "@/lib/househo
  * Household passcode gate. When HOUSEHOLD_PASSCODE is set, every page and API
  * route needs the session cookie issued by /login. Exempt:
  *   /login        so people can sign in
+ *   /api/auth     the account sign-in endpoints (Better Auth)
  *   /api/mcp      assistants authenticate with their own bearer token
  *   /.well-known  the OAuth resource metadata the MCP 401 points to
  * Static assets and the favicon are excluded by the matcher below.
@@ -15,6 +16,7 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (
     pathname === "/login" ||
+    pathname.startsWith("/api/auth/") ||
     pathname === "/api/mcp" ||
     pathname.startsWith("/api/mcp/") ||
     pathname.startsWith("/.well-known/")
