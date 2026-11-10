@@ -126,8 +126,11 @@ is built on first use behind a `getAuth()` function, the same pattern as
 ### Infrastructure
 - **Schema and migration:** add Better Auth's tables (`user`, `session`,
   `account`, `verification`, `passkey`) plus `family` and `invitations` to
-  `src/db/schema.ts`; generate one Drizzle migration. Prototype tables are
-  untouched.
+  `src/db/schema.ts`. Each task that changes the schema generates its own
+  Drizzle migration for its changes (task 1 added `drizzle/0001_accounts.sql`;
+  later tasks add the next numbered file). A migration that has been merged
+  is never edited or regenerated, since it may already be applied to a
+  database. Prototype tables are untouched.
 - **Environment variables:** add `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
   `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OWNER_EMAIL`. Remove
   `HOUSEHOLD_PASSCODE`.
