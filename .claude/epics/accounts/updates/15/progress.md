@@ -59,6 +59,10 @@ Stream A in `15-analysis.md` is implemented on
    smoke exit 1, and with `requireOwner()` exit 0. Merged with the current
    `epic/accounts` (PR #22 is in) in a scratch worktree, smoke passes with
    the 13 real actions, and there are no conflicts.
+- Merged `origin/epic/accounts` (with PR #22) into this branch as a merge
+  commit. Smoke now scans the real `src/app/family/actions.ts` (13 actions in
+  all); switching `inviteMemberAction` to `requireMember()` makes smoke fail
+  naming it. All checks pass on the merged branch.
 - `check:accounts` now runs 62 assertions; typecheck, lint, smoke,
   check:accounts and `env -u DATABASE_URL` build pass.
 
