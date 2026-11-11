@@ -2,7 +2,7 @@
 name: accounts
 status: in-progress
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-11T00:37:11Z
+updated: 2026-11-11T00:40:57Z
 progress: 62%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
@@ -141,8 +141,11 @@ is built on first use behind a `getAuth()` function, the same pattern as
 - **Preview deployments:** Google sign-in works on Vercel previews through
   Better Auth's `oAuthProxy` plugin (the stakeholder's decision, during #11):
   Google always redirects to one fixed URL, which hands the sign-in back to
-  the preview. Until the epic reaches `main`, that fixed URL is the stable
-  `epic/accounts` preview. Previews need their own sign-in variables and must
+  the preview. That fixed URL is a designated preview (the `epic/accounts`
+  preview now, a long-lived branch such as `auth-proxy` later), never
+  production. Production and previews are fully separate (stakeholder's
+  decision on #24): separate Google OAuth clients and secrets, and
+  production never loads the proxy. Previews need their own sign-in variables and must
   never use the production database. Passkeys stay tied to one domain.
 
 ## Implementation Strategy
