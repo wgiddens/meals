@@ -149,17 +149,17 @@ In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
 
-Foundation pieces come before the numbered items. Accounts, then core, are
-built first:
+Foundation pieces come before the numbered items. Accounts, then custom
+domain, then core, are built first:
 
+- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
+  account in one invite-only family, with an owner who manages members.
+  Sign in with Google. Replaces the shared household passcode.
 - **Custom domain (`.claude/prds/custom-domain.md`), right after accounts
   and before passkeys.** Production moves to `meals.giddens.app`. Accounts
   goes live on the Vercel address first (decided 2026-11-11), so the move
   re-registers Google sign-in and everyone signs in once more.
-- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
-  account in one invite-only family, with an owner who manages members.
-  Sign in with Google. Replaces the shared household passcode.
-- **Passkeys (`.claude/prds/passkeys.md`), any time after accounts.** Sign
+- **Passkeys (`.claude/prds/passkeys.md`), any time after custom domain.** Sign
   in with Face ID or a fingerprint instead of Google. Nothing else waits on
   it.
 - **Email (`.claude/prds/email.md`), any time after accounts.** The app can

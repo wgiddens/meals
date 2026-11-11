@@ -68,7 +68,8 @@ Acceptance criteria:
   built) is `https://meals.giddens.app` in production.
 - The production Google OAuth client lists the new callback URL, and
   sign-in with Google succeeds at the new address.
-- `docs/DEPLOY.md` names `meals.giddens.app` as the production address.
+- `docs/DEPLOY.md` states that `<production-domain>` is
+  `meals.giddens.app`, keeping its placeholder convention.
 
 ## Functional Requirements
 
@@ -92,10 +93,12 @@ Acceptance criteria:
 - **Cost:** no new recurring cost beyond the yearly registration of
   `giddens.app`, which we already hold. Custom domains are free on Vercel's
   Hobby plan.
-- **Downtime:** none needed. The new address is added alongside the old
-  one, which keeps working.
-- **Security:** HTTPS only; no secrets change; the bearer token and passcode
-  (or accounts sign-in) protect the app exactly as before.
+- **Downtime:** none for the app itself; the new address is added alongside
+  the old one. Sign-in moves with `BETTER_AUTH_URL`, so after the switch
+  members sign in at the new address. The old `*.vercel.app` address may
+  keep serving pages, but signing in there no longer works.
+- **Security:** HTTPS only; no secrets change; the MCP bearer token and
+  accounts sign-in protect the app exactly as before.
 
 ## Success Criteria
 
@@ -127,7 +130,8 @@ Acceptance criteria:
   PRD.
 - Anything on the bare `giddens.app` or other subdomains.
 - Redirecting the old `*.vercel.app` address or keeping old links working.
-  It may keep serving the app; nothing depends on it.
+  It may keep serving pages, but sign-in there stops working after the
+  move; nothing depends on it.
 - Custom addresses for preview deployments.
 - Moving off Vercel or changing plan.
 
