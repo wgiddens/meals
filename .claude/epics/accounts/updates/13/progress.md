@@ -1,13 +1,13 @@
 ---
 issue: 13
 started: 2026-11-11T02:39:38Z
-last_sync: 2026-11-11T02:39:38Z
+last_sync: 2026-11-11T02:54:51Z
 completion: 100%
 ---
 
 # Issue #13: Passkeys: add, remove and sign in
 
-Implemented on branch `claude/issue-13-passkeys`; draft PR into
+Implemented on branch `claude/issue-13-passkeys`; draft PR #25 into
 `epic/accounts`.
 
 ## Acceptance criteria
@@ -64,3 +64,5 @@ Implemented on branch `claude/issue-13-passkeys`; draft PR into
 - `.env.example` and the docs don't yet describe passkeys and the
   `BETTER_AUTH_URL` requirement; that's #16's documentation task.
 - Not tried on a real phone or on a Vercel deployment.
+
+<!-- SYNCED: 2026-11-11T02:54:51Z -->
