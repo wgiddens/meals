@@ -9,9 +9,9 @@ export const metadata = { title: "Sign in" };
 type SearchParams = Promise<{ next?: string; error?: string }>;
 
 /**
- * Sign in with Google (and, with the "Passkeys" task, a passkey). Signed-in
- * visitors, and everyone in local development without Google configured
- * (the dev owner), are sent straight on to `next`, or `/`.
+ * Sign in with Google. Signed-in visitors, and everyone in local development
+ * without Google configured (the dev owner), are sent straight on to `next`,
+ * or `/`.
  */
 export default function SignInPage(props: { searchParams: SearchParams }) {
   return (
@@ -75,7 +75,6 @@ async function SignIn({ searchParams }: { searchParams: SearchParams }) {
         </p>
       )}
       <GoogleSignInButton next={next} />
-      {/* Passkeys: the "Use a passkey" button goes here (the "Passkeys" task). */}
     </SignInCard>
   );
 }

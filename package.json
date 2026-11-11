@@ -19,7 +19,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",
-    "@better-auth/passkey": "~1.7.20",
     "@electric-sql/pglite": "^0.5.15",
     "@modelcontextprotocol/server": "^2.4.0",
     "better-auth": "~1.7.20",

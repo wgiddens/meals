@@ -11,8 +11,10 @@ import * as schema from "./schema";
  * The app talks to Postgres through Drizzle either way. Which Postgres depends
  * on the environment:
  *
- *  - DATABASE_URL set   -> a real Postgres server (Supabase in production).
- *                          Run `npm run db:migrate` to apply migrations.
+ *  - DATABASE_URL set   -> a real Postgres server (Neon, through Vercel's
+ *                          Neon integration, when hosted). `npm run build`
+ *                          applies migrations; `npm run db:migrate` does it
+ *                          by hand.
  *  - DATABASE_URL unset -> PGlite, an embedded Postgres that lives in
  *                          ./data/pglite. Migrations are applied automatically
  *                          on first use, so `npm run dev` just works.
