@@ -141,7 +141,7 @@ Settings (all unset locally; values per environment in
 | Variable | Role |
 | --- | --- |
 | `BETTER_AUTH_SECRET` | Signs session cookies. Production fails closed without it. |
-| `BETTER_AUTH_URL` | The site's public address: sign-in redirects, and the address shown on `/family` after inviting. |
+| `BETTER_AUTH_URL` | The site's public address: sign-in redirects, and the address shown on `/family` after inviting. On Preview: the fixed preview's address, the same as `OAUTH_PROXY_URL` (see [DEPLOY.md](DEPLOY.md)). |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client. Both set turns sign-in on. |
 | `OWNER_EMAIL` | Who becomes the owner on first sign-in; needed only until then. |
 | `OAUTH_PROXY_URL`, `OAUTH_PROXY_SECRET`, `OAUTH_PROXY_PREVIEW_PATTERN` | Google sign-in on Vercel previews only (below). |
