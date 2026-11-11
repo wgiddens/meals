@@ -2,7 +2,8 @@
  * End-to-end check of the data layer against a throwaway embedded database:
  * create recipes, plan a week, mark a supper cooked, rate and patch a recipe,
  * build a grocery list, add a manual item, check off and remove items by name,
- * rebuild and make sure checked state survives.
+ * rebuild and make sure checked state survives. Also the sign-in gate's pure
+ * decisions (gateMode, devOwnerAllowed, safeReturnPath) and the dev owner.
  *   npm run smoke
  */
 import fs from "node:fs";
@@ -40,15 +41,16 @@ async function main() {
     console.log(`ok - ${msg}`);
   };
 
-  // The /login return path must never point off-site.
-  const { safeReturnPath } = await import("@/lib/household");
+  // The sign-in return path must never point off-site, or back to sign-in.
+  const { safeReturnPath, gateMode, devOwnerAllowed } = await import("@/lib/gate");
   for (const bad of [
     "//evil.example",
     "/\\evil.example",
     "/%5Cevil.example",
     "https://evil.example",
     "/plan\u0000",
-    "/login?next=%2Fplan",
+    "/sign-in?next=%2Fplan",
+    "/sign-in/",
     "",
     undefined,
   ]) {
@@ -56,6 +58,178 @@ async function main() {
   }
   assert(safeReturnPath("/plan?x=1") === "/plan?x=1", "return path /plan?x=1 is allowed");
   assert(safeReturnPath("/recipes/abc") === "/recipes/abc", "return path /recipes/abc is allowed");
+
+  // Who is let in, decided from the environment alone. Production is checked
+  // first: no sign-in configuration can make it reach the dev owner.
+  const google = { GOOGLE_CLIENT_ID: "id", GOOGLE_CLIENT_SECRET: "secret" };
+  const gateCases: [Record<string, string | undefined>, string][] = [
+    [{ NODE_ENV: "development" }, "dev-owner"],
+    [{}, "dev-owner"],
+    [{ NODE_ENV: "test", GOOGLE_CLIENT_ID: "id" }, "dev-owner"],
+    [{ NODE_ENV: "development", GOOGLE_CLIENT_ID: " ", GOOGLE_CLIENT_SECRET: "secret" }, "dev-owner"],
+    [{ NODE_ENV: "development", ...google }, "sign-in"],
+    [{ NODE_ENV: "production" }, "closed"],
+    [{ NODE_ENV: "production", BETTER_AUTH_SECRET: "s" }, "closed"],
+    [{ NODE_ENV: "production", ...google }, "closed"],
+    [{ NODE_ENV: "production", ...google, BETTER_AUTH_SECRET: " " }, "closed"],
+    [{ NODE_ENV: "production", ...google, BETTER_AUTH_SECRET: "s" }, "sign-in"],
+  ];
+  for (const [env, expected] of gateCases) {
+    assert(gateMode(env) === expected, `gateMode(${JSON.stringify(env)}) is ${expected}`);
+    assert(
+      devOwnerAllowed(env) === (expected === "dev-owner"),
+      `devOwnerAllowed(${JSON.stringify(env)}) is ${expected === "dev-owner"}`,
+    );
+  }
+
+  // /api/mcp's bearer check. Production with no key refuses every request,
+  // with or without a token; development with no key is open.
+  const { verifyMcpToken } = await import("@/lib/mcp-auth");
+  for (const token of [undefined, "", "anything"]) {
+    assert(
+      verifyMcpToken(token, { NODE_ENV: "production" }) === undefined,
+      `MCP: production with no key refuses token ${JSON.stringify(token)}`,
+    );
+  }
+  assert(verifyMcpToken(undefined, { NODE_ENV: "development" })?.clientId === "local", "MCP: development with no key is open");
+  const keyed = { NODE_ENV: "production", MCP_API_KEY: "k-123" };
+  assert(verifyMcpToken("k-123", keyed)?.token === "k-123", "MCP: the right key is accepted");
+  for (const token of [undefined, "k-12", "k-1234", "K-123"]) {
+    assert(verifyMcpToken(token, keyed) === undefined, `MCP: token ${JSON.stringify(token)} is refused when a key is set`);
+  }
+
+  // Every exported Server Action starts with requireMember() (or
+  // requireOwner()), in every "use server" file under src. Read from source
+  // because calling them needs a Next.js request. The scan fails closed: an
+  // export it cannot check, or a "use server" anywhere but the top of a file,
+  // is a problem rather than something to skip.
+  const USE_SERVER = /["']use server["']/g;
+  // The family page's actions are owner-only: requireMember() is not enough.
+  // The rule covers every file under the folder, so moving, splitting or
+  // renaming the actions file cannot drop it back to the weaker rule.
+  const OWNER_ONLY_DIR = "src/app/family/";
+  const ownerOnlyFile = (rel: string) => rel.startsWith(OWNER_ONLY_DIR);
+  /** Problems with a file's Server Actions; empty when every one is guarded. */
+  const scanServerActions = (source: string, ownerOnly = false): { problems: string[]; actions: number } => {
+    const guard = ownerOnly ? "Owner" : "(?:Member|Owner)";
+    const guardName = ownerOnly ? "requireOwner()" : "requireMember() or requireOwner()";
+    // The directive must come first, after any comments and blank lines.
+    const body = source.replace(/^(?:\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*/, "");
+    const topLevel = /^["']use server["']\s*;?/.test(body);
+    const directives = source.match(USE_SERVER)?.length ?? 0;
+    const problems: string[] = [];
+    if (directives > (topLevel ? 1 : 0)) {
+      problems.push('"use server" appears other than as the first statement of the file');
+    }
+    if (!topLevel) return { problems, actions: 0 };
+    let actions = 0;
+    for (const match of source.matchAll(/\bexport\s+([^\n]*)/g)) {
+      const rest = match[1];
+      if (/^(type|interface)\s/.test(rest)) continue;
+      const fn = /^async\s+function\s+(\w+)\s*\(/.exec(rest);
+      if (!fn) {
+        problems.push(`export the scan cannot check: "export ${rest.trim().slice(0, 40)}"`);
+        continue;
+      }
+      const guarded = new RegExp(
+        `^async\\s+function\\s+${fn[1]}\\s*\\([^)]*\\)[^{]*\\{\\s*(const\\s+\\w+\\s*=\\s*)?await\\s+require${guard}\\(\\);`,
+      );
+      if (!guarded.test(source.slice(match.index + "export ".length).replace(/^\s+/, ""))) {
+        problems.push(`Server Action ${fn[1]} does not start with ${guardName}`);
+      }
+      actions++;
+    }
+    return { problems, actions };
+  };
+
+  // Each way round the scan that review found must now be a problem.
+  const guardedAction = 'export async function ok(formData: FormData) {\n  await requireMember();\n}\n';
+  const bypasses: [string, string][] = [
+    ["an exported arrow function", `"use server";\n${guardedAction}export const x = async () => {};\n`],
+    ["a comment before the directive", `// actions\n/* more */\n"use server";\nexport async function bad() {\n  return 1;\n}\n`],
+    ["export default", `"use server";\n${guardedAction}export default async function () {}\n`],
+    ["export { ... }", `"use server";\n${guardedAction}async function y() {}\nexport { y };\n`],
+    ["an inline directive in a page", `export default function Page() {\n  async function act() {\n    "use server";\n  }\n  return null;\n}\n`],
+    ["an unguarded action", `"use server";\nexport async function bad(formData: FormData) {\n  console.log(formData);\n  await requireMember();\n}\n`],
+  ];
+  for (const [label, fixture] of bypasses) {
+    assert(scanServerActions(fixture).problems.length > 0, `the action scan catches ${label}`);
+  }
+  const fine = scanServerActions(`/** Actions. */\n"use server";\nexport type T = 1;\n${guardedAction}`);
+  assert(fine.problems.length === 0 && fine.actions === 1, "the action scan accepts a guarded action after a comment");
+  const memberGuarded = `"use server";\n${guardedAction}`;
+  const ownerGuarded = `"use server";\nexport async function rename(formData: FormData) {\n  const owner = await requireOwner();\n}\n`;
+  for (const file of ["src/app/family/actions.ts", "src/app/family/members/invite-actions.ts"]) {
+    assert(
+      scanServerActions(memberGuarded, ownerOnlyFile(file)).problems.length > 0,
+      `the action scan refuses an action in ${file} that starts with requireMember()`,
+    );
+    const ownerScan = scanServerActions(ownerGuarded, ownerOnlyFile(file));
+    assert(
+      ownerScan.problems.length === 0 && ownerScan.actions === 1,
+      `the action scan accepts an action in ${file} that starts with requireOwner()`,
+    );
+  }
+  for (const file of ["src/app/familyx/actions.ts", "src/app/plan/actions.ts"]) {
+    assert(
+      scanServerActions(memberGuarded, ownerOnlyFile(file)).problems.length === 0,
+      `the action scan keeps requireMember() enough in ${file}, outside ${OWNER_ONLY_DIR}`,
+    );
+  }
+
+  const sourceFiles = (dir: string): string[] =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) return sourceFiles(full);
+      return /\.(ts|tsx|js|jsx|mjs)$/.test(e.name) ? [full] : [];
+    });
+  let actionCount = 0;
+  const actionProblems: string[] = [];
+  for (const file of sourceFiles(path.join(process.cwd(), "src"))) {
+    const rel = path.relative(process.cwd(), file).split(path.sep).join("/");
+    const { problems, actions } = scanServerActions(fs.readFileSync(file, "utf8"), ownerOnlyFile(rel));
+    actionProblems.push(...problems.map((p) => `${rel}: ${p}`));
+    actionCount += actions;
+  }
+  assert(
+    actionProblems.length === 0,
+    `every Server Action under src starts with requireMember() or requireOwner(), and with requireOwner() under ${OWNER_ONLY_DIR}${
+      actionProblems.length ? `:\n  ${actionProblems.join("\n  ")}` : ""
+    }`,
+  );
+  assert(actionCount >= 9, `found the Server Actions to check (${actionCount})`);
+
+  // The dev owner is created on first use, with the family row, and reused.
+  const { ensureDevOwner, DEV_OWNER } = await import("@/lib/member");
+  const { listFamily } = await import("@/lib/family");
+  const devOwner = await ensureDevOwner();
+  assert(
+    devOwner.id === DEV_OWNER.id && devOwner.role === "owner" && devOwner.email === DEV_OWNER.email,
+    "the dev owner is created on first use with role owner",
+  );
+  const familyAfterDevOwner = await listFamily();
+  assert(
+    familyAfterDevOwner.members.length === 1 && familyAfterDevOwner.members[0].id === DEV_OWNER.id,
+    "the dev owner is the family's only member",
+  );
+  const [againA, againB] = await Promise.all([ensureDevOwner(), ensureDevOwner()]);
+  assert(
+    againA.id === DEV_OWNER.id && againB.id === DEV_OWNER.id && (await listFamily()).members.length === 1,
+    "later calls, even at once, reuse the same dev owner",
+  );
+  // An owner who signed in for real (while Google was configured) is used as is.
+  const { getDb, schema } = await import("@/db");
+  const { eq } = await import("drizzle-orm");
+  const smokeDb = await getDb();
+  await smokeDb.delete(schema.user).where(eq(schema.user.id, DEV_OWNER.id));
+  await smokeDb
+    .insert(schema.user)
+    .values({ id: "real-owner", name: "Real", email: "real@example.com", emailVerified: true, role: "owner" });
+  const reused = await ensureDevOwner();
+  assert(
+    reused.id === "real-owner" && (await listFamily()).members.length === 1,
+    "with an owner already present, the dev shortcut uses that owner and creates no other",
+  );
 
   const tacos = await createRecipe({
     title: "Smoke Tacos",

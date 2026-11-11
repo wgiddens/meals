@@ -140,8 +140,8 @@ is built.
 - Runs locally with zero setup (embedded Postgres); deploys to Vercel with
   its Neon Postgres integration. Hosting should stay free, or at least very
   cheap.
-- Household passcode: one shared passcode (`HOUSEHOLD_PASSCODE`) gates the
-  web app; each phone signs in once. Assistants keep their own MCP token.
+- Accounts: each of us signs in with Google to a personal account in one
+  invite-only family, managed by an owner (see Accounts under "Next").
 
 ### Next
 
@@ -153,11 +153,14 @@ Foundation pieces come before the numbered items. Accounts, then core, are
 built first:
 
 - **Custom domain (`.claude/prds/custom-domain.md`), before accounts goes
-  live.** Production lives at `meals.giddens.app`, so passkeys, Google
-  sign-in and assistants are set up once on an address that won't change.
-- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
-  account in one invite-only family, with an owner who manages members.
-  Sign in with Google or a passkey. Replaces the shared household passcode.
+  live.** Production lives at `meals.giddens.app`, so Google sign-in and
+  assistants are set up once on an address that won't change.
+- **Accounts (`.claude/prds/accounts.md`). Built.** Each of us has a
+  personal account in one invite-only family, with an owner who manages
+  members. Sign in with Google. Replaced the shared passcode.
+- **Passkeys (`.claude/prds/passkeys.md`), any time after accounts.** Sign
+  in with Face ID or a fingerprint instead of Google. Nothing else waits on
+  it.
 - **Email (`.claude/prds/email.md`), any time after accounts.** The app can
   send email from our own domain: invitation emails and sign-in by email
   link, so a Google account is no longer required. Nothing else waits on
