@@ -65,10 +65,11 @@ Acceptance criteria:
 A project-wide Ignored Build Step in Vercel (Settings → Git) skips a build
 only when nothing outside `.claude/`, `docs/` and Markdown files changed
 since the branch's last deployed commit (`$VERCEL_GIT_PREVIOUS_SHA`). When
-there is no previous deployed commit, or it can't be compared, it builds:
+there is no previous deployed commit, or it can't be compared, it exits 1
+and builds (Vercel documents only exit 0 = skip and 1 = build):
 
 ```bash
-[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ':(exclude).claude' ':(exclude)docs' ':(exclude)*.md'
+if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ':(exclude).claude' ':(exclude)docs' ':(exclude)*.md'; then exit 0; else exit 1; fi
 ```
 
 ## Open Questions
