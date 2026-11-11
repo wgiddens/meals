@@ -263,7 +263,8 @@ Acceptance criteria:
   restricted to an allowlist built from the environment only:
   - production: the hosts of `BETTER_AUTH_URL` and Vercel's
     `VERCEL_PROJECT_PRODUCTION_URL` (which becomes `meals.giddens.app` when
-    `custom-domain` adds it);
+    `custom-domain` adds it), and none at all unless `BETTER_AUTH_URL` is
+    a valid URL (stakeholder, 2026-11-11);
   - preview: the deployment's own `VERCEL_URL` and `VERCEL_BRANCH_URL`;
   - local: `localhost` and `127.0.0.1` on any port.
   Never a preview host in production, never a wildcard such as
@@ -318,7 +319,9 @@ Acceptance criteria:
   signed out on their next request.
 - On a PR preview, sign-in works on the branch address and on the
   per-deployment address.
-- `grep -ri "oauth_proxy\|oAuthProxy" src scripts docs` finds nothing.
+- `grep -ri "oauth_proxy\|oAuthProxy" src scripts` finds nothing, and the
+  docs name the old `OAUTH_PROXY_*` variables only in the production
+  runbook's cleanup list and rollback steps.
 - The connector's Observability tab shows how many token requests a month
   sign-in uses; recorded in `docs/DEPLOY.md`.
 
