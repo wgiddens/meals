@@ -60,6 +60,14 @@ Acceptance criteria:
 - Preview sign-in works through the fixed proxy branch, as documented in
   `docs/DEPLOY.md`.
 
+## Current state (2026-11-11)
+
+The `epic/accounts` branch, the fixed sign-in proxy, was deleted when the
+accounts epic merged, and no `auth-proxy` branch exists yet. Google sign-in
+on previews doesn't work until this PRD sets up `auth-proxy`
+(`docs/DEPLOY.md`, §3); the stakeholder chose to leave it until then.
+Production is unaffected.
+
 ## Interim measure (in place before this PRD is built)
 
 A project-wide Ignored Build Step in Vercel (Settings → Git) skips a build
