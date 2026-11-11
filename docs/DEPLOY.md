@@ -36,13 +36,26 @@ rotating them.
 
 - [ ] **Production:** the Neon integration's database, `DATABASE_URL` on the
       Production environment.
-- [ ] **Preview:** its own database, set as `DATABASE_URL` on the Preview
-      environment only. Never the production one: every build runs
-      migrations (`scripts/migrate-if-configured.mjs`), so a preview build of
-      an unmerged schema change would migrate production. A separate Neon
-      database is simplest. If you use the integration's per-preview branches
-      instead, each starts as a copy of production's data, members and
-      invitations included.
+- [ ] **Preview:** a separate database, set as `DATABASE_URL` on the
+      Preview environment only. A preview build must never run migrations
+      against production: every build runs them
+      (`scripts/migrate-if-configured.mjs`), so a preview of an unmerged
+      schema change would migrate the production database.
+      - **Watch the Neon integration.** When it is connected, it can set the
+        same `DATABASE_URL` for Preview as for Production. Connect it to
+        Production only, or override Preview's `DATABASE_URL` with the
+        separate database.
+      - **Avoid per-preview Neon branches.** The integration can create a
+        branch per preview, but each branch starts as a copy of production's
+        rows: members, invitations, sessions and the Google tokens Better
+        Auth stores with each linked account. Use a separate Preview
+        database instead.
+- [ ] **Check that Preview's `DATABASE_URL` differs from Production's.** In
+      Vercel's environment variables, compare the two values' host and
+      database name (the part after the last `/`). Look at those parts only;
+      never paste or print the whole value, which contains the password. If
+      host and database name are the same, stop and fix Preview before the
+      next preview build.
 - [ ] Never point a local dev server at the production database. With no
       Google client configured locally, everyone is the dev owner, and the
       dev owner reuses whoever already owns that database: anyone who can
@@ -74,13 +87,18 @@ it back.
       `epic/accounts` branch preview. `<fixed-preview-url>` is its branch
       address exactly as Vercel reports it (`VERCEL_BRANCH_URL`), for
       example `https://meals-git-epic-accounts-<team>.vercel.app`.
-- [ ] **After the epic merges into `main`:** create a long-lived branch such
-      as `auth-proxy` from `main` and push it. Its branch preview becomes the
-      fixed preview: set `OAUTH_PROXY_URL` (Preview) to its branch address,
-      swap the preview client's redirect URI to
-      `<its branch address>/api/auth/callback/google`, and redeploy the
-      previews. Do this before deleting `epic/accounts`, or preview sign-in
-      stops working.
+- [ ] **After the epic merges into `main`, move the fixed preview to a
+      long-lived `auth-proxy` branch,** in this order (deleting
+      `epic/accounts` earlier breaks preview sign-in):
+      1. Create `auth-proxy` from `main` and push it.
+      2. Set `OAUTH_PROXY_URL` (Preview) to its branch address, exactly as
+         Vercel reports it.
+      3. In the preview Google client, swap the redirect URI to
+         `<its branch address>/api/auth/callback/google`.
+      4. Redeploy `auth-proxy` and sign in with Google on its preview.
+      5. Redeploy one PR preview and sign in with Google there; it must go
+         through `auth-proxy` and land back on the PR preview.
+      6. Only then delete the `epic/accounts` branch.
 - [ ] **Keep `auth-proxy` tracking `main`.** It runs the sign-in code for
       every preview, so after each merge to `main` fast-forward it:
 
@@ -144,12 +162,15 @@ whose slug ends the same way (`meals-*-myteam` would also match
 profile, never a production sign-in: production refuses hand-backs and
 ID-token sign-in is off. Accepted by the stakeholder on #24.
 
-## Production hand check
+## Hand check
 
-Google sign-in cannot run in CI, so this is done by hand on production once
-the setup above is in place, with three Google accounts: the owner's
-(`OWNER_EMAIL`), a second family member's, and one that is not invited. Use a
-private window for each person.
+Google sign-in cannot run in CI, so it is checked by hand once the setup
+above is in place: on production, then on one preview.
+
+### Production
+
+Use three Google accounts: the owner's (`OWNER_EMAIL`), a second family
+member's, and one that is not invited. Use a private window for each person.
 
 - [ ] **Owner signs in with Google.** Open `https://<production-domain>`; it
       redirects to `/sign-in`. "Continue with Google" with the owner's
@@ -169,7 +190,15 @@ private window for each person.
       next page load goes to `/sign-in` (an API call gets a 401). Re-invite
       them afterwards if they should stay.
 
+### Preview
+
+- [ ] **Sign in on a PR preview other than the fixed one.** With Deployment
+      Protection on and signed in to Vercel, open a PR preview (not the
+      `epic/accounts` or `auth-proxy` preview) and "Continue with Google". It
+      goes through the fixed preview and lands back on the PR preview,
+      signed in.
+
 ### Result
 
-Not done yet. Record the date, who ran it and the outcome of each step here
-(no real emails).
+Not done yet. Record the date, who ran it and the outcome of each step
+above, production and preview, here (no real emails).

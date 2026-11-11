@@ -91,7 +91,9 @@ There is one family per deployment, and it is invite only.
 
 Two layers check every request: `src/proxy.ts` looks the session up before
 any page or API route (signed-out pages go to `/sign-in`, API calls get a
-401), and every Server Action and API route checks again on the server.
+401), and every Server Action and API route checks again on the server,
+except `/api/auth` (the sign-in endpoints themselves) and `/api/mcp` (which
+checks its own `MCP_API_KEY` bearer token).
 
 Locally, with no Google client configured, you are the built-in **dev
 owner** and nothing asks you to sign in. In production that shortcut is

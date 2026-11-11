@@ -334,5 +334,5 @@ Vercel, with its Neon Postgres integration for `DATABASE_URL`. The build
 database it points at. Production and previews are fully separate: their own
 databases, Google OAuth clients and secrets.
 
-The one-time setup checklist and the production hand check are in
-[DEPLOY.md](DEPLOY.md).
+The one-time setup checklist and the hand check (production and a preview)
+are in [DEPLOY.md](DEPLOY.md).
