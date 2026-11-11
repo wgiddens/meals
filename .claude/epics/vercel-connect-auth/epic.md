@@ -2,7 +2,7 @@
 name: vercel-connect-auth
 status: backlog
 created: 2026-11-11T16:04:34Z
-updated: 2026-11-11T17:14:55Z
+updated: 2026-11-11T18:05:00Z
 progress: 0%
 prd: .claude/prds/vercel-connect-auth.md
 github: (will be set on sync)
@@ -56,11 +56,16 @@ from the environment only, never from the request:
 
 | Environment | Allowed hosts |
 | --- | --- |
-| Production (`VERCEL_ENV=production`) | the hosts of `BETTER_AUTH_URL` and `VERCEL_PROJECT_PRODUCTION_URL` |
+| Production (`VERCEL_ENV=production`) | the hosts of `BETTER_AUTH_URL` and `VERCEL_PROJECT_PRODUCTION_URL`, but none unless `BETTER_AUTH_URL` is a valid URL |
 | Preview | `VERCEL_URL` and `VERCEL_BRANCH_URL` |
 | Not production (`NODE_ENV`) | also `localhost:*` and `127.0.0.1:*` |
 
 Rules:
+- In production the list is empty unless `BETTER_AUTH_URL` is a valid URL;
+  `VERCEL_PROJECT_PRODUCTION_URL` only adds to it. Vercel always sets
+  `VERCEL_PROJECT_PRODUCTION_URL`, so without this rule production would
+  never fail closed on a missing `BETTER_AUTH_URL` (stakeholder,
+  2026-11-11, during decomposition).
 - No preview host in production and no wildcard ever, such as `*.vercel.app`.
   A request on any other host fails.
 - `VERCEL_PROJECT_PRODUCTION_URL` is Vercel's production domain. It becomes
@@ -191,7 +196,8 @@ exchange through Connect fails.
   - `VERCEL_CONNECT_GOOGLE` on each environment.
   - Delete `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_PROXY_URL`,
     `OAUTH_PROXY_SECRET`, `OAUTH_PROXY_PREVIEW_PATTERN`, Preview's
-    `BETTER_AUTH_URL`, and the spike branch's override.
+    `BETTER_AUTH_URL` (deleted earlier, in task 5's setup), and the spike
+    branch's override.
   - Production keeps `BETTER_AUTH_URL` (its allowed host),
     `BETTER_AUTH_SECRET` and `OWNER_EMAIL`.
 - **OIDC federation:** on (Team issuer). Already done in the spike.
@@ -208,15 +214,19 @@ exchange through Connect fails.
    runbook exist before anyone runs them.
 4. **Preview first, then merge** (task 5):
    1. Snapshot the Preview database.
-   2. Set Preview's `VERCEL_CONNECT_GOOGLE` and check Preview's
-      `OWNER_EMAIL`.
+   2. Set Preview's `VERCEL_CONNECT_GOOGLE`, check Preview's
+      `OWNER_EMAIL`, and delete Preview's `BETTER_AUTH_URL` (the never-created
+      fixed preview's address, which `/family` would otherwise show after an
+      invitation).
    3. Reset the Preview database.
-   4. Run the full hand check on the epic PR's preview, on its branch
+   4. Run the full hand check on the epic branch's preview (the deployment
+      the epic PR shows), on its branch
       address and its per-deployment address.
 
    The epic merges only when that passes.
 5. **Production: setup before the merge, reset after it.** This is the
-   runbook in `docs/DEPLOY.md`, not an epic task. Merging to `main` deploys
+   runbook in `docs/DEPLOY.md`. Steps 1–5 are epic task 6, so the epic PR
+   can't open until they are done; steps 6–9 are not an epic task. Merging to `main` deploys
    production at once. Without a connector, the gate is `closed` and the
    family, existing sessions included, is locked out. So steps 1–5 are a
    precondition of the epic merge.
@@ -225,7 +235,7 @@ exchange through Connect fails.
    3. Confirm `OWNER_EMAIL` is set on Production and that the live
       deployment was built after it was set.
    4. Check that project links are isolated: a code exchange from the epic
-      PR's preview against the production connector gets a 403.
+      branch's preview against the production connector gets a 403.
    5. Take a Neon snapshot of the production database.
    6. Merge the epic; production deploys.
    7. Run the reset on Production.
@@ -287,13 +297,15 @@ task 5 checks it.
 | 2 | Indefinite sessions: 400 days, daily renewal; checks updated | 1 | yes, with 3 |
 | 3 | `scripts/reset-accounts.ts`: host guard, `OWNER_EMAIL` reminder, its check | – | yes, with 1 and 2 |
 | 4 | Docs: `docs/DEPLOY.md` (Connect setup, preview steps, the production runbook with backup and rollback, no proxy, connector-replacement warning), `docs/ARCHITECTURE.md`, README, `.env.example` | 1, 2, 3 | no |
-| 5 | Preview reset and hand check on the epic PR's preview (stakeholder with an agent). Covers the treated-as-proven items, `sub` stability and gateway `redirect_uri` checking (below); project-link isolation is in the production runbook. Also tries removing `prompt=consent` and records the token-request count | 4 | no |
+| 5 | Preview reset and hand check on the epic branch's preview (stakeholder with an agent). Covers the treated-as-proven items, `sub` stability and gateway `redirect_uri` checking (below); project-link isolation is in the production runbook. Also tries removing `prompt=consent` and records the token-request count | 4 | no |
+
+| 6 | Production pre-merge setup: runbook steps 1–5 (production client and connector, `VERCEL_CONNECT_GOOGLE`, `OWNER_EMAIL` live, project-link isolation, snapshot); stakeholder with an agent | 5 | no |
 
 Tasks 1 and 2 both edit `src/lib/auth.ts`, so 2 waits for 1. Task 3 is a new
 file and runs beside them.
 
 ### Task 5's hand check
-Run on the epic PR's preview, on its branch address and on its
+Run on the epic branch's preview, on its branch address and on its
 per-deployment address.
 
 **The app's rules:**
@@ -351,7 +363,7 @@ per-deployment address.
   - **Hosts:** a request on a host outside the allowlist is refused.
     Production's allowlist never contains a preview host or a wildcard, and
     is empty, so the gate is `closed`, when `BETTER_AUTH_URL` is unset or
-    invalid.
+    invalid, even with `VERCEL_PROJECT_PRODUCTION_URL` set.
   - **ID-token sign-in** is refused. No built-in `google` social provider
     is configured.
   - **Hand-back paths:** `/api/auth/callback/google/oauth-proxy` and
@@ -361,23 +373,27 @@ per-deployment address.
     is `closed`. Local with no connector is the dev owner.
   - **The reset script** refuses a mismatched `--confirm-host`.
 - `grep -ri "oauth_proxy\|oAuthProxy\|GOOGLE_CLIENT_SECRET" src scripts .env.example`
-  finds nothing. `docs/DEPLOY.md` mentions `GOOGLE_CLIENT_SECRET` only in
-  the rollback steps.
-- Task 5's hand check passes on the epic PR's preview before the merge.
-- The production runbook's steps 1–5 (production client and connector,
+  finds nothing. `docs/DEPLOY.md` names the `GOOGLE_CLIENT_*` and
+  `OAUTH_PROXY_*` variables only in the runbook's step-9 cleanup list and the
+  rollback steps; no doc mentions `oAuthProxy` or `auth-proxy`. (This
+  narrows the PRD's `grep ... docs` criterion, which would otherwise forbid
+  the cleanup list.)
+- Task 5's hand check passes on the epic branch's preview before the merge.
+- The production runbook's steps 1–5 (task 6) (production client and connector,
   Production's `VERCEL_CONNECT_GOOGLE`, `OWNER_EMAIL` confirmed in the live
   deployment, project-link isolation, snapshot) are done before the merge.
 
 ## Estimated Effort
 
-Five tasks:
+Six tasks:
 - task 1 is medium (the offline full-sign-in checks are most of it);
 - tasks 2 and 3 are small;
 - task 4 is small to medium;
-- task 5 is mostly the stakeholder's setup plus a short hand check.
+- task 5 is mostly the stakeholder's setup plus a short hand check;
+- task 6 is the stakeholder's production setup plus one isolation check.
 
-Critical path: 1 → 2 → 4 → 5, with 3 beside 1 and 2. The production
-switch-over follows the merge, from the runbook.
+Critical path: 1 → 2 → 4 → 5 → 6, with 3 beside 1 and 2. The production
+switch-over (runbook steps 6–9) follows the merge.
 
 ## Tasks Created
 - [ ] 001.md - Google sign-in through Vercel Connect, OAuth proxy removed (parallel: true)
@@ -385,8 +401,9 @@ switch-over follows the merge, from the runbook.
 - [ ] 003.md - One-off account reset script (parallel: true)
 - [ ] 004.md - Docs, Connect setup and the production runbook (parallel: false)
 - [ ] 005.md - Preview reset and hand check on the epic's preview (parallel: false)
+- [ ] 006.md - Production pre-merge setup (runbook steps 1–5) (parallel: false)
 
-Total tasks: 5
+Total tasks: 6
 Parallel tasks: 3
-Sequential tasks: 2
-Estimated total effort: 17 hours
+Sequential tasks: 3
+Estimated total effort: 19 hours
