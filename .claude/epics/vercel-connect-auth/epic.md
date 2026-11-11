@@ -2,7 +2,7 @@
 name: vercel-connect-auth
 status: backlog
 created: 2026-11-11T16:04:34Z
-updated: 2026-11-11T16:40:00Z
+updated: 2026-11-11T17:14:55Z
 progress: 0%
 prd: .claude/prds/vercel-connect-auth.md
 github: (will be set on sync)
@@ -378,3 +378,15 @@ Five tasks:
 
 Critical path: 1 → 2 → 4 → 5, with 3 beside 1 and 2. The production
 switch-over follows the merge, from the runbook.
+
+## Tasks Created
+- [ ] 001.md - Google sign-in through Vercel Connect, OAuth proxy removed (parallel: true)
+- [ ] 002.md - Sessions last 400 days and renew daily (parallel: true)
+- [ ] 003.md - One-off account reset script (parallel: true)
+- [ ] 004.md - Docs, Connect setup and the production runbook (parallel: false)
+- [ ] 005.md - Preview reset and hand check on the epic's preview (parallel: false)
+
+Total tasks: 5
+Parallel tasks: 3
+Sequential tasks: 2
+Estimated total effort: 17 hours
