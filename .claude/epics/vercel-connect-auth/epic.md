@@ -298,7 +298,6 @@ task 5 checks it.
 | 3 | `scripts/reset-accounts.ts`: host guard, `OWNER_EMAIL` reminder, its check | – | yes, with 1 and 2 |
 | 4 | Docs: `docs/DEPLOY.md` (Connect setup, preview steps, the production runbook with backup and rollback, no proxy, connector-replacement warning), `docs/ARCHITECTURE.md`, README, `.env.example` | 1, 2, 3 | no |
 | 5 | Preview reset and hand check on the epic branch's preview (stakeholder with an agent). Covers the treated-as-proven items, `sub` stability and gateway `redirect_uri` checking (below); project-link isolation is in the production runbook. Also tries removing `prompt=consent` and records the token-request count | 4 | no |
-
 | 6 | Production pre-merge setup: runbook steps 1–5 (production client and connector, `VERCEL_CONNECT_GOOGLE`, `OWNER_EMAIL` live, project-link isolation, snapshot); stakeholder with an agent | 5 | no |
 
 Tasks 1 and 2 both edit `src/lib/auth.ts`, so 2 waits for 1. Task 3 is a new
