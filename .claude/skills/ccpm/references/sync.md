@@ -216,7 +216,7 @@ bash <skill_path>/references/scripts/neon-branch.sh cleanup <epic_name> --issue 
 
 ## Merging an Epic
 
-> **In this repo:** don't merge locally or push to `main`. The orchestrator skill opens a final draft PR from `epic/<name>` into `main`, and the stakeholder merges it.
+> **In this repo:** don't merge locally or push to `main`. Under the orchestrator skill, a dev chat opens the final PR from `epic/<name>` into `main`, and the stakeholder merges it.
 
 **Trigger**: User wants to merge a completed epic back to main.
 

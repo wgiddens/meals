@@ -13,8 +13,8 @@ Two local rules come before everything below:
 
 - **Starting work on an issue, closing an issue, and merging an epic go
   through the orchestrator skill** (`.claude/skills/orchestrator/SKILL.md`).
-  It runs each task as a separate implementation chat with a draft PR into
-  `epic/<name>`, a separate review chat, and the stakeholder's merge. Load it
+  It runs each task as a separate dev chat that gets its own review chat,
+  opens a PR into `epic/<name>`, and sees it to the stakeholder's merge. Load it
   and follow it instead of `references/execute.md` "Starting an Issue" / "Starting a Full
   Epic" and `references/sync.md` "Closing an Issue" / "Merging an Epic".
 - **Epic and task files live on the epic branch, not `main`.** Run every
