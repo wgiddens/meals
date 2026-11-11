@@ -152,9 +152,10 @@ approved.
 Foundation pieces come before the numbered items. Accounts, then core, are
 built first:
 
-- **Custom domain (`.claude/prds/custom-domain.md`), before accounts goes
-  live.** Production lives at `meals.giddens.app`, so passkeys, Google
-  sign-in and assistants are set up once on an address that won't change.
+- **Custom domain (`.claude/prds/custom-domain.md`), right after accounts
+  and before passkeys.** Production moves to `meals.giddens.app`. Accounts
+  goes live on the Vercel address first (decided 2026-11-11), so the move
+  re-registers Google sign-in and everyone signs in once more.
 - **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
   account in one invite-only family, with an owner who manages members.
   Sign in with Google. Replaces the shared household passcode.
