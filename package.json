@@ -13,12 +13,15 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx --tsconfig tsconfig.json src/db/seed.ts",
     "check:import": "tsx --tsconfig tsconfig.json scripts/check-import.ts",
-    "smoke": "npm run check:import && tsx --tsconfig tsconfig.json scripts/smoke.ts"
+    "check:auth": "tsx --tsconfig tsconfig.json scripts/check-auth.ts",
+    "check:accounts": "tsx --tsconfig tsconfig.json scripts/check-accounts.ts",
+    "smoke": "npm run check:import && npm run check:auth && npm run check:accounts && tsx --tsconfig tsconfig.json scripts/smoke.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.4.0",
     "@electric-sql/pglite": "^0.5.15",
     "@modelcontextprotocol/server": "^2.4.0",
+    "better-auth": "~1.7.20",
     "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.3.0",
     "next": "16.4.5",

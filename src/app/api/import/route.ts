@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { ImportUrlError, importRecipeFromUrl, NoRecipeFoundError } from "@/lib/import";
+import { NotSignedInError, requireMember } from "@/lib/member";
 
 /**
  * POST { url } → { draft, method, sourceUrl }.
@@ -8,6 +9,16 @@ import { ImportUrlError, importRecipeFromUrl, NoRecipeFoundError } from "@/lib/i
  * photo endpoint returns, so the form pre-fills the same way.
  */
 export async function POST(req: Request) {
+  // proxy.ts already checks the session; this second check does not depend on its matcher.
+  try {
+    await requireMember();
+  } catch (err) {
+    if (err instanceof NotSignedInError) {
+      return Response.json({ error: err.message }, { status: 401 });
+    }
+    throw err;
+  }
+
   let url: unknown;
   try {
     ({ url } = (await req.json()) as { url?: unknown });

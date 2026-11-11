@@ -1,7 +1,7 @@
 ---
 name: accounts
 description: Personal accounts for one family, invite only, with Google sign-in and an owner who manages members; replaces the shared household passcode
-status: backlog
+status: implemented
 created: 2026-11-10T16:56:42Z
 updated: 2026-11-11T03:15:00Z
 ---

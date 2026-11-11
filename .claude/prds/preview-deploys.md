@@ -97,7 +97,6 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
 
 - None blocking. The interim measure can be applied today; the rest can be
   planned any time.
-- `docs/DEPLOY.md`, cited above, arrives on `main` with the accounts epic.
 - Related: `accounts` (`docs/DEPLOY.md`, the fixed sign-in proxy branch
   `auth-proxy`), `custom-domain`, `neon-dev-database` and
   `neon-epic-branches`.

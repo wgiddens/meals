@@ -140,8 +140,8 @@ is built.
 - Runs locally with zero setup (embedded Postgres); deploys to Vercel with
   its Neon Postgres integration. Hosting should stay free, or at least very
   cheap.
-- Household passcode: one shared passcode (`HOUSEHOLD_PASSCODE`) gates the
-  web app; each phone signs in once. Assistants keep their own MCP token.
+- Accounts: each of us signs in with Google to a personal account in one
+  invite-only family, managed by an owner (see Accounts under "Next").
 
 ### Next
 
@@ -152,9 +152,9 @@ approved.
 Foundation pieces come before the numbered items. Accounts, then custom
 domain, then core, are built first:
 
-- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
-  account in one invite-only family, with an owner who manages members.
-  Sign in with Google. Replaces the shared household passcode.
+- **Accounts (`.claude/prds/accounts.md`). Built.** Each of us has a
+  personal account in one invite-only family, with an owner who manages
+  members. Sign in with Google. Replaced the shared passcode.
 - **Custom domain (`.claude/prds/custom-domain.md`), right after accounts
   and before passkeys.** Production moves to `meals.giddens.app`. Accounts
   goes live on the Vercel address first (decided 2026-11-11), so the move
