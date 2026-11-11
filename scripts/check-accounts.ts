@@ -140,7 +140,7 @@ async function main() {
     await db.execute(sql`drop function if exists check_accounts_record_user_insert()`);
     await db.execute(sql`drop table if exists check_accounts_user_inserts`);
     await db.delete(schema.invitations);
-    await db.delete(schema.user); // sessions and accounts cascade
+    await db.delete(schema.user); // sessions, accounts and passkeys cascade
     await db.delete(schema.family);
   };
   try {
@@ -508,6 +508,267 @@ async function main() {
     assert(
       (await roleOf(owner.id)) === "owner" && (await sessionFor(ownerSignIn.cookie))?.user.id === owner.id,
       "7.9 the owner and their session are still there",
+    );
+
+    // ---- [11] Passkeys ------------------------------------------------------------------
+    section("[11] passkeys: added only by a signed-in member, never create an account, go when the member is removed");
+    // A software authenticator: a P-256 key pair that answers the plugin's real
+    // ceremonies through Better Auth's HTTP handler, as a browser would. The
+    // server verifies everything with @simplewebauthn/server as in production.
+    const nodeCrypto = await import("node:crypto");
+    const ORIGIN = "http://localhost:3000";
+    const b64url = (bytes: Buffer) => bytes.toString("base64url");
+    const sha256 = (data: Buffer | string) => nodeCrypto.createHash("sha256").update(data).digest();
+    const softwareAuthenticator = (rpID = "localhost") => {
+      const { privateKey, publicKey } = nodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+      const jwk = publicKey.export({ format: "jwk" }) as { x: string; y: string };
+      // COSE_Key {1: 2 (EC2), 3: -7 (ES256), -1: 1 (P-256), -2: x, -3: y} in CBOR.
+      const coseKey = Buffer.concat([
+        Buffer.from([0xa5, 0x01, 0x02, 0x03, 0x26, 0x20, 0x01, 0x21, 0x58, 0x20]),
+        Buffer.from(jwk.x, "base64url"),
+        Buffer.from([0x22, 0x58, 0x20]),
+        Buffer.from(jwk.y, "base64url"),
+      ]);
+      const credentialId = nodeCrypto.randomBytes(16);
+      let counter = 0;
+      const authData = (flags: number, attested?: Buffer) => {
+        const count = Buffer.alloc(4);
+        count.writeUInt32BE(++counter);
+        return Buffer.concat([sha256(rpID), Buffer.from([flags]), count, attested ?? Buffer.alloc(0)]);
+      };
+      const clientData = (type: string, challenge: string, origin: string) =>
+        Buffer.from(JSON.stringify({ type, challenge, origin, crossOrigin: false }));
+      return {
+        id: b64url(credentialId),
+        /** navigator.credentials.create(), attestation "none". */
+        create(challenge: string, origin = ORIGIN) {
+          const idLength = Buffer.alloc(2);
+          idLength.writeUInt16BE(credentialId.length);
+          // flags: user present, user verified, attested credential data.
+          const data = authData(0x45, Buffer.concat([Buffer.alloc(16), idLength, credentialId, coseKey]));
+          const dataLength = Buffer.alloc(2);
+          dataLength.writeUInt16BE(data.length);
+          // CBOR {"fmt": "none", "attStmt": {}, "authData": bytes}
+          const attestationObject = Buffer.concat([
+            Buffer.from([0xa3, 0x63]), Buffer.from("fmt"), Buffer.from([0x64]), Buffer.from("none"),
+            Buffer.from([0x67]), Buffer.from("attStmt"), Buffer.from([0xa0]),
+            Buffer.from([0x68]), Buffer.from("authData"), Buffer.from([0x59]), dataLength, data,
+          ]);
+          return {
+            id: b64url(credentialId),
+            rawId: b64url(credentialId),
+            type: "public-key",
+            authenticatorAttachment: "platform",
+            clientExtensionResults: {},
+            response: {
+              clientDataJSON: b64url(clientData("webauthn.create", challenge, origin)),
+              attestationObject: b64url(attestationObject),
+              transports: ["internal"],
+            },
+          };
+        },
+        /** navigator.credentials.get() */
+        get(challenge: string, origin = ORIGIN) {
+          const data = authData(0x05);
+          const json = clientData("webauthn.get", challenge, origin);
+          const signature = nodeCrypto.sign("sha256", Buffer.concat([data, sha256(json)]), privateKey);
+          return {
+            id: b64url(credentialId),
+            rawId: b64url(credentialId),
+            type: "public-key",
+            authenticatorAttachment: "platform",
+            clientExtensionResults: {},
+            response: {
+              clientDataJSON: b64url(json),
+              authenticatorData: b64url(data),
+              signature: b64url(signature),
+            },
+          };
+        },
+      };
+    };
+    type Authenticator = ReturnType<typeof softwareAuthenticator>;
+    /** Cookies from a response's Set-Cookie headers, merged into a cookie header. */
+    const withCookies = (cookie: string, response: Response) => {
+      const jar = new Map<string, string>();
+      for (const part of cookie.split(/;\s*/).filter(Boolean)) {
+        const at = part.indexOf("=");
+        jar.set(part.slice(0, at), part.slice(at + 1));
+      }
+      for (const c of response.headers.getSetCookie()) {
+        const [pair] = c.split(";");
+        const at = pair.indexOf("=");
+        jar.set(pair.slice(0, at), pair.slice(at + 1));
+      }
+      return [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+    };
+    const call = async (method: "GET" | "POST", endpoint: string, cookie: string, body?: unknown) => {
+      const response = await auth.handler(
+        new Request(`${ORIGIN}/api/auth${endpoint}`, {
+          method,
+          headers: {
+            ...(cookie ? { cookie } : {}),
+            ...(body ? { "content-type": "application/json", origin: ORIGIN } : {}),
+          },
+          body: body ? JSON.stringify(body) : undefined,
+        }),
+      );
+      const json = (await response.clone().json().catch(() => null)) as Record<string, unknown> | null;
+      return { response, status: response.status, json, code: json?.code as string | undefined };
+    };
+    /** "Add a passkey" on /account, for whoever `cookie` belongs to. */
+    const registerPasskey = async (cookie: string, authenticator: Authenticator, name: string) => {
+      const options = await call("GET", "/passkey/generate-register-options", cookie);
+      if (options.status !== 200) return options;
+      const jar = withCookies(cookie, options.response);
+      return call("POST", "/passkey/verify-registration", jar, {
+        response: authenticator.create(options.json!.challenge as string),
+        name,
+      });
+    };
+    /** "Use a passkey" on /sign-in, from a browser with no session. */
+    const passkeySignIn = async (authenticator: Authenticator) => {
+      const options = await call("GET", "/passkey/generate-authenticate-options", "");
+      const jar = withCookies("", options.response);
+      const verified = await call("POST", "/passkey/verify-authentication", jar, {
+        response: authenticator.get(options.json!.challenge as string),
+      });
+      return { ...verified, cookie: withCookies(jar, verified.response) };
+    };
+    const passkeysOf = async (userId: string) =>
+      db.select().from(schema.passkey).where(eq(schema.passkey.userId, userId));
+    const userCount = async () => (await db.select({ id: schema.user.id }).from(schema.user)).length;
+
+    // A member to add passkeys to.
+    const patEmail = `pat-${RUN}@example.com`;
+    await family.inviteMember(owner, { name: "Pat", email: patEmail }, db);
+    const patSignIn = await expectSignIn("11.1", "Pat", patEmail);
+    const pat = patSignIn.user;
+    const patPhone = softwareAuthenticator();
+    const added = await registerPasskey(patSignIn.cookie, patPhone, "Pat's phone");
+    const patKeys = await passkeysOf(pat.id);
+    assert(
+      added.status === 200 && patKeys.length === 1 && patKeys[0].credentialID === patPhone.id && patKeys[0].name === "Pat's phone",
+      `11.1 a signed-in member adds a passkey through the real registration ceremony (got ${added.status} ${added.code ?? ""})`,
+    );
+    const patLaptop = softwareAuthenticator();
+    await registerPasskey(patSignIn.cookie, patLaptop, "Pat's laptop");
+    assert((await passkeysOf(pat.id)).length === 2, "11.2 a member can add a second passkey");
+
+    const viaPasskey = await passkeySignIn(patPhone);
+    const passkeySession = await sessionFor(viaPasskey.cookie);
+    assert(
+      viaPasskey.status === 200 && passkeySession?.user.id === pat.id,
+      `11.3 the passkey signs Pat in with no Google step, and getSession resolves the new cookie (got ${viaPasskey.status} ${viaPasskey.code ?? ""})`,
+    );
+    assert(
+      (await withEnv(google, () => member.memberForRequest(new Headers({ cookie: viaPasskey.cookie }))))?.id === pat.id,
+      "11.4 the member gate resolves the passkey session to Pat",
+    );
+
+    // Never an account: no session, no registration; an unknown passkey, no user.
+    const usersBefore = await userCount();
+    const anonymousOptions = await call("GET", "/passkey/generate-register-options", "");
+    assert(
+      anonymousOptions.status === 401,
+      `11.5 without a session, the registration options are refused (got ${anonymousOptions.status} ${anonymousOptions.code ?? ""})`,
+    );
+    const stray = softwareAuthenticator();
+    for (const body of [
+      { response: stray.create("bm90LWEtcmVhbC1jaGFsbGVuZ2U") },
+      { response: stray.create("bm90LWEtcmVhbC1jaGFsbGVuZ2U"), createSession: true },
+    ]) {
+      const got = await call("POST", "/passkey/verify-registration", "", body);
+      assert(
+        got.status === 401,
+        `11.6 without a session, verify-registration${body.createSession ? " with createSession" : ""} is refused (got ${got.status} ${got.code ?? ""})`,
+      );
+    }
+    const unknown = await passkeySignIn(stray);
+    assert(
+      unknown.status === 401 && unknown.code === "PASSKEY_NOT_FOUND" && (await sessionFor(unknown.cookie)) === null,
+      `11.7 a passkey that no member added signs nobody in (got ${unknown.status} ${unknown.code ?? ""})`,
+    );
+    assert((await userCount()) === usersBefore, "11.8 none of that created a user");
+
+    // A session older than a day may not add a passkey (Better Auth's freshAge).
+    const stale = await ctx.internalAdapter.createSession(pat.id);
+    await db
+      .update(schema.session)
+      .set({ createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.session.token, stale.token));
+    const staleCookie = `${ctx.authCookies.sessionToken.name}=${encodeURIComponent(`${stale.token}.${await makeSignature(stale.token, ctx.secret)}`)}`;
+    const staleAdd = await registerPasskey(staleCookie, softwareAuthenticator(), "Old session");
+    assert(
+      staleAdd.status === 403 && staleAdd.code === "SESSION_NOT_FRESH" && (await passkeysOf(pat.id)).length === 2,
+      `11.9 a session signed in more than a day ago must sign in again before adding a passkey (got ${staleAdd.status} ${staleAdd.code ?? ""})`,
+    );
+
+    // One member cannot remove another's passkey.
+    const ownerTriesDelete = await call("POST", "/passkey/delete-passkey", ownerSignIn.cookie, { id: patKeys[0].id });
+    assert(
+      ownerTriesDelete.status !== 200 && (await passkeysOf(pat.id)).length === 2,
+      `11.10 a member cannot remove someone else's passkey, not even the owner (got ${ownerTriesDelete.status})`,
+    );
+    const removeLaptop = (await passkeysOf(pat.id)).find((k) => k.credentialID === patLaptop.id)!;
+    const ownDelete = await call("POST", "/passkey/delete-passkey", patSignIn.cookie, { id: removeLaptop.id });
+    const laptopSignIn = await passkeySignIn(patLaptop);
+    assert(
+      ownDelete.status === 200 && (await passkeysOf(pat.id)).length === 1 && laptopSignIn.code === "PASSKEY_NOT_FOUND",
+      `11.11 a member removes their own passkey, which then no longer signs in (got ${ownDelete.status}, then ${laptopSignIn.code})`,
+    );
+
+    // Removing the member deletes their passkeys; the passkey signs nobody in.
+    await family.removeMember(owner, pat.id, db);
+    assert((await passkeysOf(pat.id)).length === 0, "11.12 removeMember deletes every passkey of the member");
+    assert(
+      (await sessionFor(viaPasskey.cookie)) === null,
+      "11.13 the session the passkey created ended with the removal",
+    );
+    const afterRemoval = await passkeySignIn(patPhone);
+    assert(
+      afterRemoval.status === 401 &&
+        afterRemoval.code === "PASSKEY_NOT_FOUND" &&
+        (await sessionFor(afterRemoval.cookie)) === null &&
+        (await usersWithEmail(patEmail)).length === 0,
+      `11.14 the removed member's passkey no longer signs in, and creates no account (got ${afterRemoval.status} ${afterRemoval.code ?? ""})`,
+    );
+
+    // The relying party: the domain passkeys are bound to.
+    const { passkeyRelyingParty } = await import("@/lib/auth");
+    const party = (vars: Record<string, string>) => passkeyRelyingParty(vars);
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    assert(
+      same(party({}), { rpID: "localhost", origin: null }) &&
+        same(party({ NODE_ENV: "development", BETTER_AUTH_URL: "http://localhost:3000" }), {
+          rpID: "localhost",
+          origin: "http://localhost:3000",
+        }),
+      "11.15 in local development the relying party is localhost",
+    );
+    assert(
+      same(party({ NODE_ENV: "production", VERCEL_ENV: "production", BETTER_AUTH_URL: "https://meals.example.com/", OAUTH_PROXY_URL: "https://meals-git-x-fam.vercel.app", VERCEL_BRANCH_URL: "meals-git-main-fam.vercel.app" }), {
+        rpID: "meals.example.com",
+        origin: "https://meals.example.com",
+      }),
+      "11.16 in production it is BETTER_AUTH_URL's host and origin, whatever else is set",
+    );
+    assert(
+      party({ NODE_ENV: "production" }) === null && party({ NODE_ENV: "production", VERCEL_ENV: "production" }) === null,
+      "11.17 production without BETTER_AUTH_URL turns passkeys off rather than use localhost",
+    );
+    assert(
+      same(
+        party({
+          NODE_ENV: "production",
+          VERCEL_ENV: "preview",
+          BETTER_AUTH_URL: "https://meals-git-epic-accounts-fam.vercel.app",
+          VERCEL_URL: "meals-abc123-fam.vercel.app",
+          VERCEL_BRANCH_URL: "meals-git-feature-fam.vercel.app",
+        }),
+        { rpID: "meals-git-feature-fam.vercel.app", origin: "https://meals-git-feature-fam.vercel.app" },
+      ) && party({ NODE_ENV: "production", VERCEL_ENV: "preview", BETTER_AUTH_URL: "https://meals-git-epic-accounts-fam.vercel.app" }) === null,
+      "11.18 on a preview it is the preview's own branch address, not the proxy's BETTER_AUTH_URL; with none, passkeys are off",
     );
 
     // ---- [10] No dev owner in production -------------------------------------------------
