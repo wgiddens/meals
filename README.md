@@ -38,6 +38,12 @@ Open http://localhost:3000. No database to install: locally the app runs an
 embedded Postgres (PGlite) stored in `./data/pglite`. The seed step adds a few
 starter recipes; skip it if you'd rather start empty.
 
+No sign-in either: with no Google client configured, you are the built-in
+**dev owner** (see [Accounts](#accounts)). Never point a local dev server at
+the production database: the dev owner reuses whoever already owns that
+database, so anyone who can reach your dev server would act as the family's
+owner.
+
 ### Optional settings
 
 Copy `.env.example` to `.env.local` and fill in what you need:
@@ -45,10 +51,52 @@ Copy `.env.example` to `.env.local` and fill in what you need:
 | Variable | Purpose |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Turns on "Start from a photo" on the new-recipe page, and lets "Start from a link" read pages that publish no recipe data. |
-| `MCP_API_KEY` | Bearer token assistants must send to `/api/mcp`. Unset = open, fine on localhost only. |
+| `MCP_API_KEY` | Bearer token assistants must send to `/api/mcp`. Unset = open locally; production refuses every request without it. |
 | `HOUSEHOLD_TIMEZONE` | What "tonight" means. Default `America/New_York`. |
-| `HOUSEHOLD_PASSCODE` | Shared passcode for the web app's `/login` page. Unset = open, fine on localhost only. Set it on any deployment. |
-| `DATABASE_URL` | Use a real Postgres (e.g. Supabase) instead of the embedded one. |
+| `DATABASE_URL` | Use a real Postgres instead of the embedded one. Hosted, this is Neon through Vercel's Neon integration. |
+
+Sign-in settings. Leave them all unset locally; set them on every deployment
+(see [docs/DEPLOY.md](docs/DEPLOY.md)):
+
+| Variable | Purpose |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | Signs session cookies. Required on a deployment; generate with `openssl rand -base64 32`. |
+| `BETTER_AUTH_URL` | The site's public address, for sign-in redirects and the address shown after inviting someone. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The Google OAuth client. Setting both turns sign-in on. |
+| `OWNER_EMAIL` | The Google account that becomes the family's owner on its first sign-in. Needed only until then. |
+| `OAUTH_PROXY_URL`, `OAUTH_PROXY_SECRET`, `OAUTH_PROXY_PREVIEW_PATTERN` | Google sign-in on Vercel previews only. Never on production. See `.env.example`. |
+
+## Accounts
+
+Everyone in the family has their own account and signs in with **Google**.
+There is one family per deployment, and it is invite only.
+
+- **The owner** is the Google account whose email is `OWNER_EMAIL`, on its
+  first sign-in. There is exactly one owner, and only while there is none
+  does `OWNER_EMAIL` count; with it unset in production nobody can become the
+  owner, but invitations keep working.
+- **Members** are invited by the owner on the **Family** page (name and the
+  email of their Google account). No email is sent: pass on the app's address
+  shown after inviting. They sign in with that Google account.
+- **Everyone else** is refused: a Google account that is not the owner email
+  and has no pending invitation, or whose email Google hasn't verified,
+  cannot create an account.
+- **The owner removes members** on the Family page. A removed member is
+  signed out on their next request.
+- **No automatic account linking.** A member is tied to the Google account
+  they first signed in with. If that Google account is deleted and
+  re-created, sign-in is refused until the owner removes and re-invites them.
+- **Sessions last 90 days** and are renewed while in use, so a phone stays
+  signed in. **My account** changes your display name and signs you out.
+
+Two layers check every request: `src/proxy.ts` looks the session up before
+any page or API route (signed-out pages go to `/sign-in`, API calls get a
+401), and every Server Action and API route checks again on the server.
+
+Locally, with no Google client configured, you are the built-in **dev
+owner** and nothing asks you to sign in. In production that shortcut is
+unreachable, and if the sign-in settings are incomplete the app **fails
+closed**: nothing is accessible and `/sign-in` says sign-in isn't set up.
 
 ## Connect an AI assistant
 
@@ -138,9 +186,10 @@ a branch and open a pull request into `main`. CI (GitHub Actions) runs
 typecheck, lint, smoke and build on every pull request, and the check must be
 green before the PR is merged.
 
-Hosting details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#deployment).
-Short version: Vercel + a Supabase Postgres, five environment variables, run
-`npm run db:migrate` once. There are no user accounts yet; `HOUSEHOLD_PASSCODE`
-is what keeps the deployment to the family. Each person types it once on
-`/login` and their phone stays signed in for a year. Assistants are unaffected:
-`/api/mcp` keeps using its own `MCP_API_KEY` bearer token.
+Hosting and the one-time setup (Google OAuth clients, Vercel variables, a
+separate Preview database) are in [docs/DEPLOY.md](docs/DEPLOY.md). Short
+version: Vercel with its Neon Postgres integration; every build applies the
+database migrations; production and previews use separate Google clients,
+secrets and databases. Family members use production and sign in with
+Google. Assistants are unaffected: `/api/mcp` keeps using its own
+`MCP_API_KEY` bearer token.
