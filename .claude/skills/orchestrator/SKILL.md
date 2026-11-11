@@ -1,6 +1,6 @@
 ---
 name: orchestrator
-description: "Runs ccpm epics as orchestrator and project manager for the stakeholder: takes each ready task through a separate implementation chat, a separate review chat and the stakeholder's merge, then starts the next. Use when the stakeholder asks to orchestrate, run, drive or keep an epic on track, to 'take it from here' on ccpm work, to start work on an issue, close an issue or merge an epic, and on scheduled orchestrator check-ins. Builds on the ccpm skill, which defines the files, scripts and GitHub conventions. Not for a one-off standup or status question (use ccpm, from the epic worktree) or for implementing a task itself."
+description: "Runs ccpm epics as orchestrator and project manager for the stakeholder: takes each ready task through a separate implementation chat, a separate review chat and the stakeholder's merge, then starts the next. Use when the stakeholder asks to orchestrate, run, drive or keep an epic on track, to 'take it from here' on ccpm work, to start work on an issue, close an issue or merge an epic, and on scheduled orchestrator check-ins. Builds on the ccpm skill, which defines the files, scripts and GitHub conventions. Not for a one-off standup or status question (use ccpm, from the epic worktree) or for implementing a task or defining work itself."
 ---
 
 # Orchestrator
@@ -37,6 +37,10 @@ skill only when they say to. Rules say what to do, not why.
 - **Implementation and review each run in their own chat**
   (`claude-code-remote:create_session`), never in a subagent and never by
   you.
+- **Definition work runs in its own chat too,** never in this one: writing
+  or editing a PRD, parsing a PRD into an epic, decomposing an epic,
+  planning or brainstorming a feature, and investigations or spikes. You
+  decide the work is needed and run it as in "Definition work".
 - **The stakeholder's PR comments count as requests from them,** the same as
   chat. Every chat posts as the stakeholder's account (`wgiddens`), so a
   comment is the stakeholder's only if it is by `wgiddens`, has no Claude
@@ -66,6 +70,7 @@ skill only when they say to. Rules say what to do, not why.
    `.claude/epics/<epic>/updates/<N>/execution.md` (session ids, PR number,
    check-in id). Check those sessions (`claude-code-remote:get_session`,
    `claude-code-remote:list_events`) and the PR before doing anything else.
+4. Check open definition chats and their draft PRs the same way.
 
 ## Branch and PR model
 
@@ -165,6 +170,22 @@ these changes:
   Against a Completed Issue".
 - **Minor findings still open after the last task:** fix them before or in
   the final epic PR.
+
+## Definition work
+1. Start the chat: `claude-code-remote:create_session` with `source_url`
+   `https://github.com/wgiddens/meals`, `source_revision` `main` (or
+   `epic/<name>` if the work changes an epic that has that branch),
+   `outcome_branch` `claude/define-<slug>`, and the definition brief from [references/briefs.md](references/briefs.md),
+   filled in.
+2. Send the stakeholder the chat's link (`https://claude.ai/code/<session
+   id>`) so they can answer its questions there directly.
+3. Relay questions it sends you and the stakeholder's answers, word for
+   word. Don't answer product questions yourself.
+4. When its draft PR opens, take it through "The per-task loop" steps 4-6
+   with the non-code review brief, sending fixes to the definition chat.
+   Skip the `execution.md` records.
+5. After the stakeholder merges, archive both chats and unsubscribe from the
+   PR. New or changed tasks then go through the per-task loop.
 
 ## Epic completion
 When every task is closed (this replaces ccpm `sync.md`, "Merging an Epic"):
