@@ -149,16 +149,23 @@ In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
 
-Foundation pieces come before the numbered items. Accounts, then custom
-domain, then core, are built first:
+Foundation pieces come before the numbered items. Accounts, then Vercel
+Connect sign-in, then custom domain, then core, are built first:
 
 - **Accounts (`.claude/prds/accounts.md`). Built.** Each of us has a
   personal account in one invite-only family, with an owner who manages
   members. Sign in with Google. Replaced the shared passcode.
-- **Custom domain (`.claude/prds/custom-domain.md`), right after accounts
-  and before passkeys.** Production moves to `meals.giddens.app`. Accounts
-  goes live on the Vercel address first (decided 2026-11-11), so the move
-  re-registers Google sign-in and everyone signs in once more.
+- **Vercel Connect sign-in (`.claude/prds/vercel-connect-auth.md`), right
+  after accounts and before custom domain (decided 2026-11-11).** Google
+  sign-in moves to Vercel Connect's Better Auth adapter in every
+  environment, so previews sign in without the OAuth proxy and the domain
+  move doesn't touch Google. Sessions last indefinitely; everyone is
+  re-invited once.
+- **Custom domain (`.claude/prds/custom-domain.md`), right after Vercel
+  Connect sign-in and before passkeys.** Production moves to
+  `meals.giddens.app`. Accounts goes live on the Vercel address first
+  (decided 2026-11-11), so everyone signs in once more after the move;
+  Google itself needs no change once sign-in goes through Connect.
 - **Passkeys (`.claude/prds/passkeys.md`), any time after custom domain.** Sign
   in with Face ID or a fingerprint instead of Google. Nothing else waits on
   it.
@@ -222,9 +229,6 @@ domain, then core, are built first:
 
 ### Later
 
-- Vercel Connect sign-in (`.claude/prds/vercel-connect-auth.md`): investigate
-  moving Google sign-in to Vercel Connect's Better Auth adapter once it
-  matures. Accounts doesn't wait for it.
 - Cook mode: the recipe page while cooking.
 - Scaling servings.
 - Recurring slots, like taco night.

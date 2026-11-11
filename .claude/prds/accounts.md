@@ -94,7 +94,8 @@ Acceptance criteria:
 As a family member, I sign in once on my phone and it stays that way.
 
 Acceptance criteria:
-- A session on a device lasts 90 days and renews on use.
+- A session on a device lasts 90 days and renews on use. (Superseded by
+  `vercel-connect-auth`, 2026-11-11: 400 days, renewed daily while in use.)
 - Sign out ends the session on that device.
 - A member can change their own display name.
 
