@@ -152,6 +152,9 @@ approved.
 Foundation pieces come before the numbered items. Accounts, then core, are
 built first:
 
+- **Custom domain (`.claude/prds/custom-domain.md`), before accounts goes
+  live.** Production lives at `meals.giddens.app`, so Google sign-in and
+  assistants are set up once on an address that won't change.
 - **Accounts (`.claude/prds/accounts.md`). Built.** Each of us has a
   personal account in one invite-only family, with an owner who manages
   members. Sign in with Google. Replaced the shared passcode.
@@ -208,6 +211,9 @@ built first:
 
 ### Later
 
+- Vercel Connect sign-in (`.claude/prds/vercel-connect-auth.md`): investigate
+  moving Google sign-in to Vercel Connect's Better Auth adapter once it
+  matures. Accounts doesn't wait for it.
 - Cook mode: the recipe page while cooking.
 - Scaling servings.
 - Recurring slots, like taco night.

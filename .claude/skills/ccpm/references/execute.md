@@ -78,6 +78,8 @@ parallelization_factor: <1.0-5.0>
 
 ## Starting an Issue
 
+> **In this repo:** start issues through the orchestrator skill (`.claude/skills/orchestrator/SKILL.md`), which uses this section with its own changes. Don't launch agents that commit straight to `epic/<name>`.
+
 **Trigger**: User wants to begin work on a specific GitHub issue.
 
 ### Preflight
@@ -186,6 +188,8 @@ Sync updates: "sync issue <N>"
 ---
 
 ## Starting a Full Epic
+
+> **In this repo:** use the orchestrator skill instead; it starts one task at a time through separate chats.
 
 **Trigger**: User wants to launch parallel agents across all ready issues in an epic at once.
 

@@ -166,10 +166,9 @@ Acceptance criteria:
 
 ## Constraints & Assumptions
 
-- **A domain we own is required and is not yet confirmed.** Sending
-  services verify a domain before sending to arbitrary addresses. This PRD
-  cannot start until a domain is chosen. A domain is the one likely cost
-  here, typically paid yearly.
+- **The domain is `giddens.app`** (see `custom-domain`). Sending services
+  verify a domain before sending to arbitrary addresses; its mail records
+  are set up here, not in `custom-domain`.
 - **Free-tier limits are assumed, not verified in full.** Resend's pricing
   page states a cap of 100 emails a day on its free plan; other details
   (monthly total, number of domains) come from third-party sources and
