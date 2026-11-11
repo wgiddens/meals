@@ -93,6 +93,8 @@ Acceptance criteria:
   so a fault cannot run up usage.
 - **Deliverability:** invitation emails reach the inbox, not spam, for
   Gmail, Outlook and iCloud addresses, checked by hand once at launch.
+- **Speed:** an email is handed to the sending service within 5 seconds of
+  the request.
 - **Security:** the sending key exists only in server-side configuration.
 - **Privacy:** email addresses are sent to the sending service only as
   recipients. No address outside the family is ever emailed.

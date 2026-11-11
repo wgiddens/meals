@@ -34,6 +34,11 @@ Acceptance criteria (starting point from the original `weekly-draft`):
 - In production the endpoint refuses every request when `MCP_API_KEY` is
   unset.
 
+## Success Criteria
+
+- An assistant connected over MCP can answer "what's for supper?" and can
+  redraft the week.
+
 ## Out of Scope
 
 - OAuth for assistants (`mcp-oauth`); the bearer token stays.

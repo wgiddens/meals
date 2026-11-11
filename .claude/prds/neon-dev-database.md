@@ -82,8 +82,8 @@ string is stored, and cleanup.
 
 - Hosting is Vercel with its Neon integration; cost must stay free or very
   cheap.
-- Neon's free-plan branch limit has not been checked and may cap how many
-  epics can hold a branch at once.
+- Neon's free-plan branch limit has not been checked; one dev branch per
+  developer is assumed to fit.
 - Working against Neon requires an internet connection; offline work falls
   back to the embedded database.
 
@@ -105,8 +105,8 @@ string is stored, and cleanup.
 
 1. Neon Local in Docker, or branches used directly through the CLI and
    `neon-branch.sh`?
-2. How many branches does Neon's free plan allow, and is one per epic
-   affordable?
+2. How many branches does Neon's free plan allow? (Whether one per epic is
+   affordable belongs to `neon-epic-branches`.)
 3. Should the dev branch be long-lived per developer, temporary per session,
    or per git branch?
 4. Does the Vercel Neon integration already create a branch per preview

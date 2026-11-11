@@ -31,11 +31,18 @@ Acceptance criteria:
 - A meal with no ingredients (other than a pick-up meal) is visibly marked
   as needing ingredients on the home page.
 - Pick-up meals are never marked.
+- Meals marked as needing ingredients may still be drafted by
+  `weekly-draft`.
 
 ## Functional Requirements
 
 - An ingredient has: name (required), quantity and unit (both optional).
 - The allergy check is unchanged: it matches on ingredient names.
+
+## Success Criteria
+
+- Every meal with no ingredients (other than pick-up) shows the marker.
+- Existing plain ingredient lines keep working unchanged.
 
 ## Out of Scope
 

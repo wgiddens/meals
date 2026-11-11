@@ -195,7 +195,8 @@ Added to the settings page from `core`:
 - The "try these?" stack, photo and link capture (`find-new-meals`).
 - Drafting breakfasts or lunches; recurring themed slots such as taco night;
   planning more than one week ahead.
-- A user-editable draft time of day.
+- A user-editable draft time of day; deferred to `phone-approval`, where the
+  text is sent.
 
 ## Dependencies
 

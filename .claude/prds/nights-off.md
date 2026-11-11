@@ -45,8 +45,11 @@ Acceptance criteria:
 - A night off, including one that came from a weekday default, can be
   turned back into a cooked night for that week; the rules then fill it
   with an eligible meal, and it stays a cooked night through a redraft.
-- A night off set for a date before its week is drafted is kept when the
-  draft runs.
+- A night off can be set on the week page for any date in the current or
+  coming week, even before the coming week is drafted, and is kept when the
+  draft runs. A week counts as drafted (for `weekly-draft`'s "leave an
+  existing plan alone") only once the draft has run, not because a night
+  off was set in it.
 - These changes apply to that date only and never alter the weekday
   defaults.
 
@@ -73,6 +76,11 @@ Acceptance criteria:
 
 - Marking a night off for this week takes two taps and survives a redraft.
 - With two default nights off, every drafted week has those nights off.
+
+## Constraints & Assumptions
+
+- Single household: one set of weekday defaults.
+- A night off is per date; there is no recurring calendar.
 
 ## Out of Scope
 

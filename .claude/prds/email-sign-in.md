@@ -70,6 +70,12 @@ Acceptance criteria:
 
 - **Security:** tokens are hashed at rest and single use; rate limits apply
   before any email is sent.
+- **Speed:** a sign-in email is handed to the sending service within 5
+  seconds of the request.
+- **Deliverability:** sign-in emails reach the inbox, not spam, for Gmail,
+  Outlook and iCloud addresses, checked by hand once at launch.
+- **Records:** sign-in link sends are recorded like invitations (recipient,
+  kind, time, accepted or not); links themselves are never stored.
 - **Tests:** automated tests cover a reused link, an expired link, an
   address outside the family receiving nothing, the rate limit and a removed
   member's link being refused. Tests never send real email.
@@ -96,4 +102,4 @@ Acceptance criteria:
 
 ## Dependencies
 
-- `email`, complete.
+- `email`, complete. `email-invite-status` follows this PRD.

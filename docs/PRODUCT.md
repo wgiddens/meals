@@ -170,7 +170,8 @@ built first:
   foundation everything else needs: the favourites list of dinners (name,
   effort, ingredients), the allergy list as an absolute filter, and simple
   phone pages to manage both. Ingredient quantities and the "needs
-  ingredients" marker follow in `meal-details`.
+  ingredients" marker follow in `meal-details`, any time after core and
+  before the grocery list.
 
 1. **Weekly draft (`suggest_week`).** A scheduled task drafts the week's
    dinners and saves the plan, ready by Saturday afternoon. Built in small
@@ -185,8 +186,8 @@ built first:
    - Uses "last cooked" history so nothing repeats within a few weeks.
    - Includes one new meal, clearly marked, that resembles what we already
      like.
-   - Exposed as an MCP tool too, so any assistant can draft or redraft the
-     week.
+   - MCP access for assistants is rebuilt later, in `assistant-tools`,
+     before item 7.
 2. **Approve on the phone.** Shannon and Will get a text with a link. The
    mobile page shows each dinner with Approve and Swap; swaps come from
    favourites. Shannon's approval locks the plan. Personal accounts

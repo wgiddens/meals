@@ -63,6 +63,11 @@ Acceptance criteria:
 - A meal gains a list: `favourite` or `to-try`. Existing meals are
   favourites.
 - A week entry gains an "is new" flag.
+- The draft's regular fill (`weekly-draft`'s rules) uses favourites only;
+  meals on the to-try list are placed only as the week's new meal.
+- The new meal is placed before the regular fill: after nights off are
+  applied (when `nights-off` exists), and before busy nights and the
+  remaining nights are filled.
 - One Claude call at most per drafted week, and none when the to-try list
   has an unplanned meal.
 - The request sends the favourites' names and the allergy list, and asks for
@@ -90,6 +95,12 @@ Acceptance criteria:
   night is neither busy nor off; otherwise it has none and the draft still
   completes.
 - Monthly AI cost is under $1.
+
+## Constraints & Assumptions
+
+- Claude's suggestion is a starting point; the family edits or removes it
+  like any other meal.
+- Without `ANTHROPIC_API_KEY`, new meals come only from the to-try list.
 
 ## Out of Scope
 
