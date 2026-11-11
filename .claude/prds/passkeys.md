@@ -104,4 +104,7 @@ Acceptance criteria:
 ## Dependencies
 
 - `accounts`, merged to `main`.
+- `custom-domain`, done first: passkeys are tied to the domain they were
+  created on, so creating them on `*.vercel.app` would lose them at the
+  move.
 - `BETTER_AUTH_URL` set on production.

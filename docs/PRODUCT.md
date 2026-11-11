@@ -149,29 +149,40 @@ In priority order. The weekly draft, phone approval and the cooking feedback
 loop come first; groceries and Walmart follow once a plan reliably gets
 approved.
 
-Foundation pieces come before the numbered items. Accounts, then core, are
-built first:
+Foundation pieces come before the numbered items. Accounts, then custom
+domain, then core, are built first:
 
-- **Custom domain (`.claude/prds/custom-domain.md`), before accounts goes
-  live.** Production lives at `meals.giddens.app`, so Google sign-in and
-  assistants are set up once on an address that won't change.
 - **Accounts (`.claude/prds/accounts.md`). Built.** Each of us has a
   personal account in one invite-only family, with an owner who manages
   members. Sign in with Google. Replaced the shared passcode.
-- **Passkeys (`.claude/prds/passkeys.md`), any time after accounts.** Sign
+- **Custom domain (`.claude/prds/custom-domain.md`), right after accounts
+  and before passkeys.** Production moves to `meals.giddens.app`. Accounts
+  goes live on the Vercel address first (decided 2026-11-11), so the move
+  re-registers Google sign-in and everyone signs in once more.
+- **Passkeys (`.claude/prds/passkeys.md`), any time after custom domain.** Sign
   in with Face ID or a fingerprint instead of Google. Nothing else waits on
   it.
 - **Email (`.claude/prds/email.md`), any time after accounts.** The app can
-  send email from our own domain: invitation emails and sign-in by email
-  link, so a Google account is no longer required. Nothing else waits on
-  it.
+  send email from our own domain, starting with invitation emails. Then
+  sign-in by email link (`email-sign-in`), so a Google account is no longer
+  required, and invitation expiry and re-send (`email-invite-status`).
+  Nothing else waits on them.
+- **Preview deploys (`.claude/prds/preview-deploys.md`), any time; nothing
+  waits on it.** Decide
+  which pushes build a Vercel preview so we stay inside the free plan's
+  daily limit, and keep previews off the production database.
 - **Core (`.claude/prds/core.md`).** Replace the prototype with the
   foundation everything else needs: the favourites list of dinners (name,
   effort, ingredients), the allergy list as an absolute filter, and simple
-  phone pages to manage both.
+  phone pages to manage both. Ingredient quantities and the "needs
+  ingredients" marker follow in `meal-details`, any time after core and
+  before the grocery list.
 
 1. **Weekly draft (`suggest_week`).** A scheduled task drafts the week's
-   dinners and saves the plan, ready by Saturday afternoon.
+   dinners and saves the plan, ready by Saturday afternoon. Built in small
+   PRDs, in this order: `weekly-draft` (the draft, the hard rules, the week
+   page), then `nights-off`, then `new-meal`; MCP tools come later in
+   `assistant-tools`.
    - Seed the favourites list first: the eight starting favourites, growing
      to 15–20 dinners the family already likes, each tagged with prep effort
      (quick, normal, or pick-up) and checked against the allergy list.
@@ -180,8 +191,8 @@ built first:
    - Uses "last cooked" history so nothing repeats within a few weeks.
    - Includes one new meal, clearly marked, that resembles what we already
      like.
-   - Exposed as an MCP tool too, so any assistant can draft or redraft the
-     week.
+   - MCP access for assistants is rebuilt later, in `assistant-tools`,
+     before item 7.
 2. **Approve on the phone.** Shannon and Will get a text with a link. The
    mobile page shows each dinner with Approve and Swap; swaps come from
    favourites. Shannon's approval locks the plan. Personal accounts
