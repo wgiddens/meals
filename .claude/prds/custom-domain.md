@@ -85,8 +85,8 @@ Acceptance criteria:
 - **App configuration:** any place the code or docs build an absolute URL
   for production reads it from configuration and resolves to
   `https://meals.giddens.app`. No address is hard-coded.
-- **Docs:** `docs/ARCHITECTURE.md` hosting steps name the real address
-  instead of `<your-domain>`, and say where the DNS record lives.
+- **Docs:** `docs/DEPLOY.md` states that `<production-domain>` is
+  `meals.giddens.app`, and says where the DNS record lives.
 
 ## Non-Functional Requirements
 

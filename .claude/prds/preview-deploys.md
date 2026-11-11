@@ -29,7 +29,7 @@ database and sign-in, and how we keep production deploys from being blocked.
   PRD and docs changes, and review-fix pushes on a branch nobody is looking
   at each spend a deployment.
 - **Previews carry setup and risk.** They need their own sign-in variables
-  and a fixed sign-in proxy branch (`epic/accounts`, later `auth-proxy`), and
+  and a fixed sign-in proxy branch (the long-lived `auth-proxy`), and
   they must never share production's database, because every build runs
   migrations.
 
