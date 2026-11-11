@@ -260,10 +260,16 @@ an unsealable profile. Production also accepted Google ID-token sign-in.
   sign-in from a link the attacker crafted. The second is now closed: the
   fixed deployment only hands back to itself or to addresses matching
   `OAUTH_PROXY_PREVIEW_PATTERN`. The first still needs the Preview secrets.
-- Vercel lets any team name a project, so a project named like
-  `meals-x-<team>` in another team could have a production domain matching
-  the preview pattern. Whether Vercel reserves team-slug suffixes is not
-  verified. The pattern is still far narrower than `*.vercel.app`.
+- **Preview-pattern residual (the stakeholder's decision: document it, no
+  code change; it only affects preview URLs).**
+  - `OAUTH_PROXY_PREVIEW_PATTERN` could match a host in another Vercel scope
+    whose slug ends the same way. For example, `https://meals-*-fam.vercel.app`
+    would also match `meals-x-…-evil-fam.vercel.app`.
+  - Exploiting it still needs the Preview `OAUTH_PROXY_SECRET`.
+  - The worst case is a preview user's basic Google profile and a
+    short-lived access token.
+  - No production sign-in is possible this way: production refuses
+    hand-backs, and ID-token sign-in is off.
 - `HOUSEHOLD_PASSCODE` is still described in `.env.example`, `README.md`
   and `docs/ARCHITECTURE.md`. Left for #16, which owns the docs.
 
