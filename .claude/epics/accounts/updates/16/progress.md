@@ -31,10 +31,13 @@ Result section are in `docs/DEPLOY.md`.
   installed oAuthProxy: skipping the proxy compares the request's origin with
   `productionURL`, so either works).
 
+- Two passkey mentions outside the file list (`src/lib/family.ts`,
+  `scripts/check-auth.ts`) reworded as neutral comments (orchestrator
+  approved the exception).
+
 ## Open
-- What `BETTER_AUTH_URL` is actually set to on Vercel Preview (unverified).
-- Two passkey mentions outside this task's files: `src/lib/family.ts:263`
-  ("such as passkeys", an example) and `scripts/check-auth.ts:1013`.
+- What `BETTER_AUTH_URL` is actually set to on Vercel Preview: orchestrator is asking the stakeholder; docs keep "leave unset".
+- Unverified: production has no Vercel Deployment Protection.
 - Production hand check not yet run.
 
 ## PR
