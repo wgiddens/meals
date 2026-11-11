@@ -6,6 +6,7 @@ import { symmetricDecrypt } from "better-auth/crypto";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
 import { genericOAuth, type GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 import { ConnectError, connect } from "@vercel/connect/betterauth";
+import { and, eq } from "drizzle-orm";
 import { getDb, schema, type Db } from "@/db";
 import { userRoles, type Role } from "@/db/schema";
 import { completeSignUp, signUpRole } from "@/lib/family";
@@ -418,7 +419,7 @@ const CONNECT_USERINFO_URL = "https://connect.vercel.com/oauth/userinfo";
  * and whether `sub` looks like Google's numeric subject or something
  * Connect-specific.
  */
-function connectGoogleProvider(connector: string): GenericOAuthConfig {
+function connectGoogleProvider(connector: string, db: Db): GenericOAuthConfig {
   const base = connect({ providerId: CONNECT_GOOGLE_PROVIDER_ID, connector });
   return {
     ...base,
@@ -437,7 +438,18 @@ function connectGoogleProvider(connector: string): GenericOAuthConfig {
       }
       const user = (await response.json()) as Record<string, unknown>;
       const sub = typeof user.sub === "string" ? user.sub : String(user.sub ?? "");
+      // Whether this subject is the `sub` an earlier direct Google sign-in
+      // stored (provider "google"): if so, existing members can be migrated
+      // by renaming their account rows' provider id. A boolean only.
+      const [existing] = sub
+        ? await db
+            .select({ id: schema.account.id })
+            .from(schema.account)
+            .where(and(eq(schema.account.providerId, "google"), eq(schema.account.accountId, sub)))
+            .limit(1)
+        : [];
       console.info("[connect-spike] userinfo", {
+        subMatchesExistingGoogleAccount: Boolean(existing),
         claimKeys: Object.keys(user).sort(),
         emailVerifiedPresent: "email_verified" in user,
         emailVerifiedValue: user.email_verified,
@@ -466,7 +478,7 @@ function createAuth(db: Db) {
     baseURL: connector ? connectBaseURL(process.env) : process.env.BETTER_AUTH_URL?.trim() || undefined,
     trustedOrigins: trustedOrigins(),
     plugins: connector
-      ? [genericOAuth({ config: [connectGoogleProvider(connector)] })]
+      ? [genericOAuth({ config: [connectGoogleProvider(connector, db)] })]
       : proxyPlugins(process.env),
     // A sign-in that fails with no error address of its own (the Google
     // button always passes one) comes back to the sign-in page on the address
