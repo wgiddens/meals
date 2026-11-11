@@ -1,14 +1,19 @@
+import { getAuthenticatorName } from "@better-auth/passkey";
+import { asc, eq } from "drizzle-orm";
 import { Suspense } from "react";
 import { signOutAction, updateDisplayNameAction } from "@/app/account/actions";
-import { gateMode, requireMember } from "@/lib/member";
+import { PasskeyList, type PasskeyItem } from "@/components/PasskeyList";
+import { getDb, schema } from "@/db";
+import { passkeyRelyingParty } from "@/lib/auth";
+import { gateMode, requireMember, type Member } from "@/lib/member";
 
 export const metadata = { title: "My account" };
 
 type SearchParams = Promise<{ saved?: string; error?: string }>;
 
 /**
- * My account: who you are signed in as, your display name, passkeys (the
- * "Passkeys" task) and sign out. src/proxy.ts has already turned away anyone
+ * My account: who you are signed in as, your display name, your passkeys
+ * and sign out. src/proxy.ts has already turned away anyone
  * who is not signed in; the member is read per request inside <Suspense>.
  */
 export default function AccountPage(props: { searchParams: SearchParams }) {
@@ -80,14 +85,15 @@ async function Account({ searchParams }: { searchParams: SearchParams }) {
         </form>
       </section>
 
-      {/* Passkeys: the list and "Add a passkey" go in this section (the "Passkeys" task). */}
       <section aria-labelledby="passkeys-heading" className="card space-y-2">
         <h2 id="passkeys-heading" className="font-semibold">
           Passkeys
         </h2>
         <p className="text-sm text-stone-500">
-          Sign in with Face ID or your fingerprint. Coming soon; for now, use Google.
+          Sign in with Face ID, your fingerprint or your device&rsquo;s screen lock instead of
+          Google. You can always still sign in with Google.
         </p>
+        <Passkeys member={member} devOwner={devOwner} />
       </section>
 
       <section className="card space-y-2">
@@ -106,3 +112,45 @@ async function Account({ searchParams }: { searchParams: SearchParams }) {
     </>
   );
 }
+
+/**
+ * The member's passkeys, read from the database. Only their own: the query is
+ * by the signed-in member's id, as Better Auth's own list endpoint does.
+ */
+async function Passkeys({ member, devOwner }: { member: Member; devOwner: boolean }) {
+  const party = passkeyRelyingParty();
+  if (devOwner || !party) {
+    return (
+      <p className="text-sm text-stone-500">
+        {devOwner
+          ? "Passkeys need sign-in to be set up here, so they aren’t available to the development owner."
+          : "Passkeys aren’t available on this site."}
+      </p>
+    );
+  }
+  const db = await getDb();
+  const rows = await db
+    .select({
+      id: schema.passkey.id,
+      name: schema.passkey.name,
+      aaguid: schema.passkey.aaguid,
+      createdAt: schema.passkey.createdAt,
+    })
+    .from(schema.passkey)
+    .where(eq(schema.passkey.userId, member.id))
+    .orderBy(asc(schema.passkey.createdAt));
+  const passkeys: PasskeyItem[] = rows.map((row) => ({
+    id: row.id,
+    label: row.name?.trim() || getAuthenticatorName(row.aaguid ?? undefined) || "Passkey",
+    added: row.createdAt ? ADDED_DATE.format(row.createdAt) : "on an unknown date",
+  }));
+  return <PasskeyList passkeys={passkeys} rpID={party.rpID} />;
+}
+
+/** "11 Nov 2026": one fixed format, the same wherever the page renders. */
+const ADDED_DATE = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});

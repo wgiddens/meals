@@ -4,6 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { symmetricDecrypt } from "better-auth/crypto";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
+import { passkey } from "@better-auth/passkey";
 import { getDb, schema, type Db } from "@/db";
 import { userRoles, type Role } from "@/db/schema";
 import { completeSignUp, signUpRole } from "@/lib/family";
@@ -371,13 +372,79 @@ function proxyPlugins(env: Env): BetterAuthPlugin[] {
     : [bindProxyHandBacksToBrowser(oauthProxySecret(env)!), proxy];
 }
 
+/**
+ * The passkey relying party: the domain a passkey is bound to (`rpID`) and the
+ * one origin a passkey ceremony is accepted from. Null turns passkeys off.
+ *
+ *   - Production and any deployment with BETTER_AUTH_URL (not a preview):
+ *     BETTER_AUTH_URL's host and exact origin.
+ *   - A Vercel preview: its own branch address, VERCEL_BRANCH_URL. Its
+ *     BETTER_AUTH_URL is the fixed OAuth proxy preview (see oauthProxyRole()),
+ *     not the address the browser is on, and a browser refuses a passkey for
+ *     another site's domain. VERCEL_BRANCH_URL is set by Vercel per deployment
+ *     and a request cannot change it; it stays the same across pushes to the
+ *     branch, so passkeys added there keep working. On the fixed preview it is
+ *     BETTER_AUTH_URL itself. On a preview's per-deployment address
+ *     (VERCEL_URL) the passkey controls are hidden (see PasskeySupport).
+ *   - Local development with no BETTER_AUTH_URL: `localhost`, and the origin is
+ *     the request's own (`http://localhost:<port>`), as the plugin does when
+ *     Better Auth has no base URL.
+ *   - Production with no BETTER_AUTH_URL: off, rather than fall back to
+ *     `localhost`.
+ *
+ * The origin is always set explicitly when known, so the plugin never adds an
+ * entry from trustedOrigins to the origins it accepts.
+ *
+ * A passkey works only on the domain it was created on. Changing the
+ * production domain (BETTER_AUTH_URL) leaves every existing passkey unusable;
+ * members then sign in with Google and add a new one.
+ */
+export type PasskeyRelyingParty = { rpID: string; origin: string | null };
+
+export function passkeyRelyingParty(env: Env = process.env): PasskeyRelyingParty | null {
+  if (env.VERCEL_ENV === "preview") {
+    const origin = originOf(env.VERCEL_BRANCH_URL);
+    return origin?.startsWith("https://") ? { rpID: new URL(origin).hostname, origin } : null;
+  }
+  const origin = originOf(env.BETTER_AUTH_URL);
+  if (origin) return { rpID: new URL(origin).hostname, origin };
+  if (env.NODE_ENV === "production") return null;
+  return { rpID: "localhost", origin: null };
+}
+
+/** The name a passkey prompt shows for this site. */
+const PASSKEY_RP_NAME = "Meals";
+
+/**
+ * Passkey sign-in (@better-auth/passkey), when passkeyRelyingParty() allows.
+ * Adding a passkey always needs a signed-in session: the plugin's
+ * passkey-first registration (`requireSession: false` with `resolveUser`) is
+ * never enabled, so a passkey can never create an account. Registration also
+ * needs a fresh session (signed in within the last day, Better Auth's
+ * default freshAge), so a phone left signed in for weeks must sign in with
+ * Google again before adding one. Signing in with a passkey looks up the
+ * passkey's own user; a removed member's passkeys were deleted with them.
+ */
+function passkeyPlugins(env: Env): BetterAuthPlugin[] {
+  const party = passkeyRelyingParty(env);
+  if (!party) return [];
+  return [
+    passkey({
+      rpID: party.rpID,
+      rpName: PASSKEY_RP_NAME,
+      ...(party.origin ? { origin: party.origin } : {}),
+      registration: { requireSession: true },
+    }),
+  ];
+}
+
 function createAuth(db: Db) {
   const google = googleConfig();
   return betterAuth({
     secret: authSecret(),
     baseURL: process.env.BETTER_AUTH_URL?.trim() || undefined,
     trustedOrigins: trustedOrigins(),
-    plugins: proxyPlugins(process.env),
+    plugins: [...proxyPlugins(process.env), ...passkeyPlugins(process.env)],
     // A sign-in that fails with no error address of its own (the Google
     // button always passes one) comes back to the sign-in page on the address
     // it was on, which explains `?error=` codes, rather than Better Auth's
@@ -390,9 +457,10 @@ function createAuth(db: Db) {
         session: schema.session,
         account: schema.account,
         verification: schema.verification,
+        passkey: schema.passkey,
       },
     }),
-    // No passwords: people sign in with Google (and, later, passkeys).
+    // No passwords: people sign in with Google or a passkey.
     emailAndPassword: { enabled: false },
     account: {
       accountLinking: {

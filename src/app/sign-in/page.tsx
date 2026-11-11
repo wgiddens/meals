@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { PasskeySignInButton } from "@/components/PasskeySignInButton";
+import { passkeyRelyingParty } from "@/lib/auth";
 import { currentMember, gateMode, safeReturnPath } from "@/lib/member";
 
 export const metadata = { title: "Sign in" };
@@ -9,7 +11,7 @@ export const metadata = { title: "Sign in" };
 type SearchParams = Promise<{ next?: string; error?: string }>;
 
 /**
- * Sign in with Google (and, with the "Passkeys" task, a passkey). Signed-in
+ * Sign in with Google or, once a member has added one, a passkey. Signed-in
  * visitors, and everyone in local development without Google configured
  * (the dev owner), are sent straight on to `next`, or `/`.
  */
@@ -67,6 +69,7 @@ async function SignIn({ searchParams }: { searchParams: SearchParams }) {
   if (await currentMember()) redirect(next);
 
   const error = errorMessage(typeof params.error === "string" ? params.error : undefined);
+  const passkeys = passkeyRelyingParty();
   return (
     <SignInCard>
       {error && (
@@ -75,7 +78,7 @@ async function SignIn({ searchParams }: { searchParams: SearchParams }) {
         </p>
       )}
       <GoogleSignInButton next={next} />
-      {/* Passkeys: the "Use a passkey" button goes here (the "Passkeys" task). */}
+      {passkeys && <PasskeySignInButton next={next} rpID={passkeys.rpID} />}
     </SignInCard>
   );
 }
