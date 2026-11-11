@@ -3,7 +3,7 @@ name: vercel-connect-auth
 description: Move Google sign-in, in production and on every preview, to Vercel Connect's Better Auth adapter, retiring the OAuth proxy and our own Google redirect URIs
 status: backlog
 created: 2026-11-11T03:07:09Z
-updated: 2026-11-11T16:04:34Z
+updated: 2026-11-11T16:40:00Z
 ---
 
 # PRD: vercel-connect-auth
@@ -86,8 +86,9 @@ Accepted costs and risks:
 - **Vendor dependency.** Sign-in now depends on `connect.vercel.com` as well
   as Google. Connect has been generally available since August 2026.
 
-Treated as proven by the stakeholder's decision, and checked again by hand
-in the epic's last task (not yet seen on a real deployment):
+Treated as proven by the stakeholder's decision, and checked by hand on
+the epic PR's own preview before it merges (epic task 5; not yet seen on a
+real deployment):
 
 - Google's `email_verified` arrives as `true` through Connect's userinfo.
   If it doesn't, the invite-only hook refuses every new sign-up with
@@ -96,6 +97,11 @@ in the epic's last task (not yet seen on a real deployment):
 - Sign-in works on a per-deployment preview address as well as the branch
   address.
 - A sign-in counts as at most one billed token request, if any.
+- Connect's `sub` is stable for a Google account, and whether it is
+  Google's own `sub`. The spike logged whether it matched an existing
+  Google row, but no sign-in ran while the logs were captured, so this is
+  unknown. It decides whether a connector can be replaced without another
+  reset, and what a rollback restores (epic, "Rollback").
 
 ### What it means for `preview-deploys`
 
@@ -189,6 +195,10 @@ Branch `claude/spike-vercel-connect` (never merged), commits `efb960f` and
   Google worked; the app refused the sign-in with `account_not_linked`,
   because the stakeholder's existing member row is linked under provider
   `google`. That refusal is `disableImplicitLinking` working as designed.
+- Not observed: the `[connect-spike] userinfo` log lines (claim names,
+  `email_verified`, whether `sub` is Google's numeric id and matches the
+  existing row). The API only streams live logs, and no sign-in ran while
+  they were captured.
 
 ## User Stories
 
@@ -250,27 +260,38 @@ Acceptance criteria:
   as decided on #24. The app reads the connector's UID from
   `VERCEL_CONNECT_GOOGLE`.
 - **Base URL:** Better Auth's base URL comes from the request's host,
-  restricted to an allowlist:
-  - production: its configured production address (`BETTER_AUTH_URL`,
-    later `meals.giddens.app` too);
+  restricted to an allowlist built from the environment only:
+  - production: the hosts of `BETTER_AUTH_URL` and Vercel's
+    `VERCEL_PROJECT_PRODUCTION_URL` (which becomes `meals.giddens.app` when
+    `custom-domain` adds it);
   - preview: the deployment's own `VERCEL_URL` and `VERCEL_BRANCH_URL`;
   - local: `localhost` and `127.0.0.1` on any port.
-  Never a wildcard such as `*.vercel.app`.
+  Never a preview host in production, never a wildcard such as
+  `*.vercel.app`, no fallback, and `https` only on Vercel.
 - **Trusted origins:** as today, without the proxy's origin.
 - **Rules kept:** the invite-only before-create hook, the verified-email
   requirement, `disableImplicitLinking`, server-only `role`, the
   after-create hook, cookie cache off, ID-token sign-in impossible.
 - **Sessions:** 400 days, renewed at most once a day while in use. This
   replaces accounts' 90-day lifetime.
-- **Gate:** "sign-in configured" means a connector UID and
-  `BETTER_AUTH_SECRET` are set (production fails closed without them). The
-  dev owner still applies outside production when no connector is set.
+- **Gate:** "sign-in configured" means a connector UID, `BETTER_AUTH_SECRET`
+  and at least one allowed host. Production fails closed without any of
+  them. The dev owner still applies outside production when no connector
+  is set.
+- **Stored tokens:** the adapter always requests `offline_access`, so
+  Better Auth stores Connect tokens in `account`; they are encrypted at rest
+  (`account.encryptOAuthTokens`).
 - **Reset:** a one-off, owner-run step deletes every user row, and so every
   session, Google link and invitation, in one database. Meals data and the
-  family row stay. With `OWNER_EMAIL` set, the owner's first sign-in
-  through Connect makes them owner again (the existing bootstrap). It runs
-  once on Production and once on the Preview database, and refuses to run
-  without an explicit confirmation naming the database host.
+  family row stay. The owner's first sign-in through Connect makes them
+  owner again through the existing `OWNER_EMAIL` bootstrap, so `OWNER_EMAIL`
+  must be set on that environment, in the live deployment, before the
+  reset. It refuses to run without an explicit confirmation naming the
+  database host, and a Neon snapshot of the database is taken first.
+- **Order and rollback:** Preview is reset and hand-checked on the epic
+  PR's preview before the epic merges; Production switches after the
+  merge, from a runbook in `docs/DEPLOY.md` with a snapshot and a rollback
+  path (the epic's "Rollback").
 - **Errors:** `ConnectError`s are logged with code and status only, never
   the vendor payload. The sign-in page explains `oauth_code_verification_failed`
   with a generic message.

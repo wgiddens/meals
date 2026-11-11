@@ -107,8 +107,9 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
 
 ## Dependencies
 
-- None blocking. The interim measure can be applied today; the rest can be
-  planned any time.
+- `vercel-connect-auth` for the preview sign-in criterion (user story 3).
+  Nothing else blocks: the interim measure can be applied today, and the
+  rest can be planned any time.
 - Related: `accounts`, `vercel-connect-auth` (preview sign-in without a
   proxy), `custom-domain`, `neon-dev-database` and
   `neon-epic-branches`.
