@@ -75,7 +75,8 @@ family member's Google account as a test user, or publish it.
         `epic/accounts` branch preview; see step 3)
       - `http://localhost:3000/api/auth/callback/google`, for trying real
         Google sign-in locally with the preview client in `.env.local`. Use
-        a throwaway local database for that, never a shared one.
+        a throwaway local database for that, never a shared one. Localhost
+        goes on the preview client only, never on the production client.
 
 ### 3. The fixed preview (OAuth proxy)
 
@@ -91,8 +92,9 @@ it back.
       long-lived `auth-proxy` branch,** in this order (deleting
       `epic/accounts` earlier breaks preview sign-in):
       1. Create `auth-proxy` from `main` and push it.
-      2. Set `OAUTH_PROXY_URL` (Preview) to its branch address, exactly as
-         Vercel reports it.
+      2. Set `OAUTH_PROXY_URL` and `BETTER_AUTH_URL` (Preview) to its branch
+         address, exactly as Vercel reports it. The two always change
+         together.
       3. In the preview Google client, swap the redirect URI to
          `<its branch address>/api/auth/callback/google`.
       4. Redeploy `auth-proxy` and sign in with Google on its preview.
@@ -119,7 +121,7 @@ any, redeploy.
 | --- | --- | --- |
 | `DATABASE_URL` | Production database (Neon integration) | The Preview database |
 | `BETTER_AUTH_SECRET` | `openssl rand -base64 32` | A different `openssl rand -base64 32` |
-| `BETTER_AUTH_URL` | `https://<production-domain>` | Leave unset: each preview uses the address it was opened on |
+| `BETTER_AUTH_URL` | `https://<production-domain>` | `<fixed-preview-url>`, the same value as `OAUTH_PROXY_URL` |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Production client | Preview client |
 | `OWNER_EMAIL` | The owner's Google email, until they first sign in | The same, for each preview database's own owner |
 | `OAUTH_PROXY_URL` | Never | `<fixed-preview-url>` |
@@ -138,6 +140,11 @@ any, redeploy.
 - [ ] **Preview sign-in variables set,** including the proxy variables from
       #12 (`OAUTH_PROXY_URL`, `OAUTH_PROXY_SECRET`,
       `OAUTH_PROXY_PREVIEW_PATTERN`).
+- [ ] **`BETTER_AUTH_URL` on Preview is the fixed preview's address,** the
+      same as `OAUTH_PROXY_URL`, on every preview. Sign-in still returns to
+      the preview it started on (each preview also trusts its own Vercel
+      addresses). One visible effect: on a preview, `/family` shows the fixed
+      preview's address after inviting someone, not the preview you are on.
 - [ ] **No `OAUTH_PROXY_*` on Production.** Production ignores them and logs
       a warning, but they should not be there.
 - [ ] **Delete the prototype's passcode variable** from Production and
