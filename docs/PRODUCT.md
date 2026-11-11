@@ -222,9 +222,11 @@ domain, then core, are built first:
 
 ### Later
 
-- Vercel Connect sign-in (`.claude/prds/vercel-connect-auth.md`): investigate
-  moving Google sign-in to Vercel Connect's Better Auth adapter once it
-  matures. Accounts doesn't wait for it.
+- Vercel Connect sign-in (`.claude/prds/vercel-connect-auth.md`). Decided
+  go on 2026-11-11 after a spike: Google sign-in moves to Vercel Connect's
+  Better Auth adapter in every environment, so previews sign in without the
+  OAuth proxy and the domain move doesn't touch Google. Sessions last
+  indefinitely; everyone is re-invited once. Epic ready.
 - Cook mode: the recipe page while cooking.
 - Scaling servings.
 - Recurring slots, like taco night.
