@@ -39,11 +39,14 @@ skill only when they say to. Rules say what to do, not why.
   you.
 - **Definition work runs in its own chat too,** never in this one: writing
   or editing a PRD, parsing a PRD into an epic, decomposing an epic,
-  planning or brainstorming a feature, and investigations or spikes. You
-  decide the work is needed and run it as in "Definition work". You may
-  make trivial edits yourself: a typo, or a one-line record of a decision
-  the stakeholder already made, in their words. Anything that changes scope
-  or requirements gets a definition chat.
+  planning or brainstorming a feature, and spikes (investigations). When
+  the stakeholder asks for it, or you find it's needed and they agree, run
+  it as in "Definition work". You may make trivial edits yourself: a typo, or a one-line record
+  of a decision the stakeholder already made, in their words. Commit one to
+  `epic/<name>` like bookkeeping if the file lives there; for a file on
+  `main`, fold it into the next definition PR or open a small draft PR
+  with the non-code review. Anything that changes scope or requirements
+  gets a definition chat.
 - **The stakeholder's PR comments count as requests from them,** the same as
   chat. Every chat posts as the stakeholder's account (`wgiddens`), so a
   comment is the stakeholder's only if it is by `wgiddens`, has no Claude
@@ -73,7 +76,9 @@ skill only when they say to. Rules say what to do, not why.
    `.claude/epics/<epic>/updates/<N>/execution.md` (session ids, PR number,
    check-in id). Check those sessions (`claude-code-remote:get_session`,
    `claude-code-remote:list_events`) and the PR before doing anything else.
-4. Check open definition chats and their draft PRs the same way.
+4. Find open definition chats with `claude-code-remote:list_sessions`
+   (`mine: true`, titles starting `Define: `) and open PRs whose head
+   starts with `claude/define-`, and check them the same way.
 
 ## Branch and PR model
 
@@ -175,19 +180,39 @@ these changes:
   the final epic PR.
 
 ## Definition work
-1. Start the chat: `claude-code-remote:create_session` with `source_url`
-   `https://github.com/wgiddens/meals`, `source_revision` `main` (or
-   `epic/<name>` if the work changes an epic that has that branch),
-   `outcome_branch` `claude/define-<slug>`, and the definition brief from [references/briefs.md](references/briefs.md),
-   filled in.
+1. Start the chat: `claude-code-remote:create_session` with `title`
+   `Define: <slug>`, `source_url` `https://github.com/wgiddens/meals`,
+   `source_revision` `main` (or `epic/<name>` if the work changes an epic
+   that has that branch), `outcome_branch` `claude/define-<slug>`, and the
+   definition brief from [references/briefs.md](references/briefs.md),
+   filled in. Schedule a fallback check-in as in per-task step 3.
 2. Send the stakeholder the chat's link (`https://claude.ai/code/<session
    id>`) so they can answer its questions there directly.
 3. Relay questions it sends you and the stakeholder's answers, word for
    word. Don't answer product questions yourself.
-4. When its draft PR opens, take it through "The per-task loop" steps 4-6
-   with the non-code review brief, sending fixes to the definition chat.
-   Skip the `execution.md` records.
-5. After the stakeholder merges, archive both chats and unsubscribe from the
+4. **A definition PR into `epic/<name>`** that changes an in-progress
+   task's `<N>.md` waits for that task to close, or goes to the stakeholder
+   first. Other definition work may run alongside the per-task loop.
+5. When its draft PR opens, take it through "The per-task loop" steps 4-6,
+   sending fixes to the definition chat, with these changes:
+   - The review chat's `source_revision` is `claude/define-<slug>` and its
+     base is `main` or `epic/<name>`. Use the non-code variant, judged
+     against `docs/PRODUCT.md`, the PRD or epic it builds on, and ccpm's
+     gates: `plan.md` "Quality gates before saving" and "≤10 tasks", and
+     `structure.md` "Dependency Rules".
+   - Skip the `execution.md` records.
+6. **A spike with no PR** sends you its findings. Pass them to the
+   stakeholder and start any definition work they lead to once the
+   stakeholder agrees.
+7. **After a decomposition merges,** create `epic/<name>` and its worktree
+   from `main` if they don't exist. Run ccpm `sync.md`, "Epic Sync", from
+   the worktree, skipping Step 5's branch creation and the Neon step, and
+   commit the renames and the `github:`/`updated:` changes to `epic/<name>`
+   as bookkeeping. For changed tasks on an epic already synced, re-run the
+   sync for new task files and update changed issue bodies as in per-task
+   step 7.
+8. **Close:** archive the definition and review chats, delete the pending
+   check-in (`claude-code-remote:delete_trigger`), and unsubscribe from the
    PR. New or changed tasks then go through the per-task loop.
 
 ## Epic completion
