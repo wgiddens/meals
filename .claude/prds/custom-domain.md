@@ -121,8 +121,12 @@ Acceptance criteria:
 - **DNS changes are manual steps for the repo owner** in the registrar's or
   Vercel's dashboard; the epic lists them exactly.
 - **Order:** after `accounts` (stakeholder's decision, 2026-11-11, to go
-  live on the Vercel address first) and before `passkeys`. Members sign in
-  with Google once more after the move.
+  live on the Vercel address first), after `vercel-connect-auth`
+  (stakeholder's decision, 2026-11-11), and before `passkeys`. Members sign
+  in with Google once more after the move. With sign-in going through
+  Vercel Connect, the move adds the new address to the app's allowed hosts
+  and doesn't touch the Google OAuth client; the epic for this PRD updates
+  the Google steps above accordingly.
 
 ## Out of Scope
 
@@ -139,6 +143,8 @@ Acceptance criteria:
 
 - Ownership of `giddens.app` and access to its DNS.
 - The existing Vercel project with production deploying from `main`.
-- `accounts`, live in production. The production Google OAuth client and
-  `BETTER_AUTH_URL` are updated as part of this PRD.
+- `accounts`, live in production.
+- `vercel-connect-auth`, built first. Its production allowed host
+  (`BETTER_AUTH_URL`) gains the new address as part of this PRD; Google's
+  only redirect URI stays `https://connect.vercel.com/callback`.
 - `docs/PRODUCT.md` – it wins on conflict.

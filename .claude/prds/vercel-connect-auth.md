@@ -114,8 +114,8 @@ in the epic's last task (not yet seen on a real deployment):
 The domain move no longer touches Google. Production's base URL gains the
 new host; Google's only redirect URI stays `connect.vercel.com/callback`.
 Sessions are still tied to the address, so everyone signs in once more after
-the move. If this epic lands first, its re-invite and the domain move's
-sign-in can be the same occasion.
+the move. The stakeholder put this PRD before `custom-domain` on
+2026-11-11, so `custom-domain` never needs a Google step.
 
 ## What we know
 
@@ -321,6 +321,8 @@ Acceptance criteria:
 - The stakeholder for manual setup: two Google OAuth clients (or the spike's
   one reused for Preview), two connectors, project links, and Vercel
   variables.
+- Order: right after `accounts`, before `custom-domain` (stakeholder,
+  2026-11-11).
 - Related: `preview-deploys` (drops `auth-proxy`), `custom-domain` (no
   Google re-registration), `passkeys` (unaffected).
 - `docs/PRODUCT.md`: it wins on conflict.
