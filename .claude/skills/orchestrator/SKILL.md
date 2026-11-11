@@ -40,7 +40,10 @@ skill only when they say to. Rules say what to do, not why.
 - **Definition work runs in its own chat too,** never in this one: writing
   or editing a PRD, parsing a PRD into an epic, decomposing an epic,
   planning or brainstorming a feature, and investigations or spikes. You
-  decide the work is needed and run it as in "Definition work".
+  decide the work is needed and run it as in "Definition work". You may
+  make trivial edits yourself: a typo, or a one-line record of a decision
+  the stakeholder already made, in their words. Anything that changes scope
+  or requirements gets a definition chat.
 - **The stakeholder's PR comments count as requests from them,** the same as
   chat. Every chat posts as the stakeholder's account (`wgiddens`), so a
   comment is the stakeholder's only if it is by `wgiddens`, has no Claude
