@@ -157,18 +157,26 @@ built first:
   sign-in and assistants are set up once on an address that won't change.
 - **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
   account in one invite-only family, with an owner who manages members.
-  Sign in with Google or a passkey. Replaces the shared household passcode.
-- **Email (`.claude/prds/email.md`), any time after accounts.** The app can
-  send email from our own domain: invitation emails and sign-in by email
-  link, so a Google account is no longer required. Nothing else waits on
+  Sign in with Google. Replaces the shared household passcode.
+- **Passkeys (`.claude/prds/passkeys.md`), any time after accounts.** Sign
+  in with Face ID or a fingerprint instead of Google. Nothing else waits on
   it.
+- **Email (`.claude/prds/email.md`), any time after accounts.** The app can
+  send email from our own domain, starting with invitation emails. Then
+  sign-in by email link (`email-sign-in`), so a Google account is no longer
+  required, and invitation expiry and re-send (`email-invite-status`).
+  Nothing else waits on them.
 - **Core (`.claude/prds/core.md`).** Replace the prototype with the
   foundation everything else needs: the favourites list of dinners (name,
   effort, ingredients), the allergy list as an absolute filter, and simple
-  phone pages to manage both.
+  phone pages to manage both. Ingredient quantities and the "needs
+  ingredients" marker follow in `meal-details`.
 
 1. **Weekly draft (`suggest_week`).** A scheduled task drafts the week's
-   dinners and saves the plan, ready by Saturday afternoon.
+   dinners and saves the plan, ready by Saturday afternoon. Built in small
+   PRDs, in this order: `weekly-draft` (the draft, the hard rules, the week
+   page), then `nights-off`, then `new-meal`; MCP tools come later in
+   `assistant-tools`.
    - Seed the favourites list first: the eight starting favourites, growing
      to 15–20 dinners the family already likes, each tagged with prep effort
      (quick, normal, or pick-up) and checked against the allergy list.

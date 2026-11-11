@@ -3,6 +3,7 @@ name: neon-dev-database
 description: Develop against a Neon branch instead of the embedded database, for parity with production, while keeping the no-setup fallback
 status: backlog
 created: 2026-11-10T18:49:04Z
+updated: 2026-11-11T03:30:00Z
 ---
 
 # PRD: neon-dev-database
@@ -13,10 +14,12 @@ created: 2026-11-10T18:49:04Z
 
 ## Executive Summary
 
-Local development and each epic's work run against a branch of the real Neon
-database rather than the embedded one, so what we test behaves like
-production. The embedded database stays for CI and as the fallback when no
+Local development runs against a branch of the real Neon database rather
+than the embedded one, so what we test behaves like production. The embedded database stays for CI and as the fallback when no
 Neon access is configured.
+
+MVP cut (stakeholder's decision, 2026-11-11): a database branch per epic is
+split out to `neon-epic-branches`.
 
 ## Problem Statement
 
@@ -50,15 +53,7 @@ Acceptance criteria:
 - Migrations are applied to that branch before the app starts.
 - My branch never touches production data.
 
-### 2. A branch per epic
-As a developer or agent starting an epic, the epic gets its own database
-branch, removed when the epic merges.
-
-Acceptance criteria:
-- Starting an epic creates its branch; merging the epic deletes it.
-- No connection string is committed or printed.
-
-### 3. Still works with nothing set up
+### 2. Still works with nothing set up
 As a new contributor or CI, the app runs with no Neon access.
 
 Acceptance criteria:
@@ -81,7 +76,6 @@ string is stored, and cleanup.
 
 - A developer goes from a fresh clone to the app running on a Neon branch in
   under 5 minutes using the documented steps.
-- Zero branches left behind after an epic merges.
 - CI remains green with no Neon secrets.
 
 ## Constraints & Assumptions
@@ -95,6 +89,7 @@ string is stored, and cleanup.
 
 ## Out of Scope
 
+- A database branch per epic (`neon-epic-branches`).
 - Removing the embedded database.
 - Running the Neon service itself locally.
 - Branches for Vercel preview deployments (the Vercel integration may

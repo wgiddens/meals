@@ -3,7 +3,7 @@ name: core
 description: Rebuild the app's foundation around a favourites list of dinners with an absolute allergy filter, and simple phone pages to manage it, behind family accounts
 status: backlog
 created: 2026-11-10T15:54:07Z
-updated: 2026-11-10T18:57:52Z
+updated: 2026-11-11T03:30:00Z
 ---
 
 # PRD: core
@@ -17,8 +17,11 @@ foundation every roadmap item needs: a **favourites list of dinners**, a
 **household allergy list that is an absolute filter**, and **simple phone
 pages** to manage both, all behind the sign-in from the `accounts` PRD.
 
-Nothing here plans a week. Week plans, cook history and assistant (MCP) access
-are specified in the `weekly-draft` PRD, which builds directly on this one.
+This is the MVP cut (stakeholder's decision, 2026-11-11): a meal to try
+and the "needs ingredients" marker move to `new-meal` and `meal-details`.
+
+Nothing here plans a week. Week plans and cook history are specified in the
+`weekly-draft` PRD, which builds directly on this one.
 
 ## Problem Statement
 
@@ -46,10 +49,7 @@ As Shannon or Will, I open the app on my phone and see the dinners we like.
 Acceptance criteria:
 - The home page lists every meal by name with its effort tag (quick, normal,
   pick-up).
-- Favourites and meals to try are shown as separate groups.
 - A meal that conflicts with the allergy list is visibly marked as excluded.
-- A meal with no ingredients yet (other than pick-up) is visibly marked as
-  needing ingredients.
 - The page is usable one-handed at 375 px width with no horizontal scrolling.
 
 ### 2. Add a meal in seconds
@@ -60,8 +60,7 @@ Acceptance criteria:
   be added later.
 - Adding a meal with name and effort takes no more than three taps after
   typing the name.
-- Ingredients are entered as plain lines, one per ingredient, with an optional
-  quantity and unit.
+- Ingredients are entered as plain lines, one per ingredient.
 - A meal name that already exists (ignoring case) is rejected with a clear
   message.
 - A meal whose name or any ingredient matches the allergy list cannot be
@@ -71,8 +70,7 @@ Acceptance criteria:
 As Shannon or Will, I fix a meal's details or take it off the list.
 
 Acceptance criteria:
-- Name, effort tag, ingredients and list (favourite or to try) can all be
-  changed.
+- Name, effort tag and ingredients can all be changed.
 - The allergy check runs on every save, the same as on add.
 - Removing a meal asks for one confirmation and then deletes it.
 
@@ -109,11 +107,13 @@ Acceptance criteria:
 
 ### Meals
 - A meal has: name (unique, case-insensitive), effort (`quick`, `normal`,
-  `pick-up`), list (`favourite` or `to-try`), an ordered set of ingredients,
-  and created/updated timestamps.
-- An ingredient has: name (required), quantity and unit (both optional).
-- Pick-up meals need no ingredients and are never marked as needing them.
-- Meals have no steps, times, complexity, rating or source in this PRD.
+  `pick-up`), an ordered list of ingredient lines, and created/updated
+  timestamps. Every meal in this PRD is a favourite.
+- An ingredient is one plain line of text.
+- Pick-up meals need no ingredients.
+- Meals have no steps, times, complexity, rating, source, quantities or units
+  in this PRD. Quantities and units come in `meal-details`; a to-try list
+  comes in `new-meal`.
 
 ### Allergy list
 - A household-wide list of allergen terms, seeded with `peanut`.
@@ -143,7 +143,7 @@ feature returns when its own PRD is built.
 | Week plan page and "mark as cooked" | `weekly-draft`, `phone-approval`, `feedback-loop` |
 | Grocery list | `grocery-list` |
 | Photo → recipe, import from link | `find-new-meals` |
-| MCP endpoint and its 13 tools | `weekly-draft` (rebuilt on the new model) |
+| MCP endpoint and its 13 tools | `assistant-tools` (rebuilt on the new model) |
 
 - The database schema is replaced with a new one. Prototype tables are
   dropped; no prototype data is migrated.
@@ -199,11 +199,17 @@ feature returns when its own PRD is built.
 
 ## Out of Scope
 
-- Week plans, drafting, nights off, and cook history (`weekly-draft`).
-- Any MCP or assistant access (`weekly-draft`, `mcp-oauth`).
+- Week plans, drafting and cook history (`weekly-draft`); nights off
+  (`nights-off`).
+- A to-try list (`new-meal`).
+- Ingredient quantity and unit, and the "needs ingredients" marker
+  (`meal-details`).
+- Any MCP or assistant access (`assistant-tools`, `mcp-oauth`). Removing the
+  prototype's endpoint leaves assistants without access until then; that is
+  accepted (stakeholder's decision, 2026-11-11).
 - Texts, approval and swaps (`phone-approval`).
 - Loved it / Never again ratings and graduation from to-try to favourite
-  (`feedback-loop`). In this PRD a meal's list is changed by hand.
+  (`feedback-loop`).
 - Grocery lists, aisles, pantry staples and Walmart item ids (`grocery-list`,
   `walmart-pickup`).
 - The "try these?" stack, photo capture and link import (`find-new-meals`).
