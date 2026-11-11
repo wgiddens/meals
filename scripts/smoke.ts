@@ -104,8 +104,15 @@ async function main() {
   // export it cannot check, or a "use server" anywhere but the top of a file,
   // is a problem rather than something to skip.
   const USE_SERVER = /["']use server["']/g;
+  // The family page's actions are owner-only: requireMember() is not enough.
+  // The rule covers every file under the folder, so moving, splitting or
+  // renaming the actions file cannot drop it back to the weaker rule.
+  const OWNER_ONLY_DIR = "src/app/family/";
+  const ownerOnlyFile = (rel: string) => rel.startsWith(OWNER_ONLY_DIR);
   /** Problems with a file's Server Actions; empty when every one is guarded. */
-  const scanServerActions = (source: string): { problems: string[]; actions: number } => {
+  const scanServerActions = (source: string, ownerOnly = false): { problems: string[]; actions: number } => {
+    const guard = ownerOnly ? "Owner" : "(?:Member|Owner)";
+    const guardName = ownerOnly ? "requireOwner()" : "requireMember() or requireOwner()";
     // The directive must come first, after any comments and blank lines.
     const body = source.replace(/^(?:\s+|\/\/[^\n]*|\/\*[\s\S]*?\*\/)*/, "");
     const topLevel = /^["']use server["']\s*;?/.test(body);
@@ -125,10 +132,10 @@ async function main() {
         continue;
       }
       const guarded = new RegExp(
-        `^async\\s+function\\s+${fn[1]}\\s*\\([^)]*\\)[^{]*\\{\\s*(const\\s+\\w+\\s*=\\s*)?await\\s+require(Member|Owner)\\(\\);`,
+        `^async\\s+function\\s+${fn[1]}\\s*\\([^)]*\\)[^{]*\\{\\s*(const\\s+\\w+\\s*=\\s*)?await\\s+require${guard}\\(\\);`,
       );
       if (!guarded.test(source.slice(match.index + "export ".length).replace(/^\s+/, ""))) {
-        problems.push(`Server Action ${fn[1]} does not start with requireMember() or requireOwner()`);
+        problems.push(`Server Action ${fn[1]} does not start with ${guardName}`);
       }
       actions++;
     }
@@ -150,6 +157,25 @@ async function main() {
   }
   const fine = scanServerActions(`/** Actions. */\n"use server";\nexport type T = 1;\n${guardedAction}`);
   assert(fine.problems.length === 0 && fine.actions === 1, "the action scan accepts a guarded action after a comment");
+  const memberGuarded = `"use server";\n${guardedAction}`;
+  const ownerGuarded = `"use server";\nexport async function rename(formData: FormData) {\n  const owner = await requireOwner();\n}\n`;
+  for (const file of ["src/app/family/actions.ts", "src/app/family/members/invite-actions.ts"]) {
+    assert(
+      scanServerActions(memberGuarded, ownerOnlyFile(file)).problems.length > 0,
+      `the action scan refuses an action in ${file} that starts with requireMember()`,
+    );
+    const ownerScan = scanServerActions(ownerGuarded, ownerOnlyFile(file));
+    assert(
+      ownerScan.problems.length === 0 && ownerScan.actions === 1,
+      `the action scan accepts an action in ${file} that starts with requireOwner()`,
+    );
+  }
+  for (const file of ["src/app/familyx/actions.ts", "src/app/plan/actions.ts"]) {
+    assert(
+      scanServerActions(memberGuarded, ownerOnlyFile(file)).problems.length === 0,
+      `the action scan keeps requireMember() enough in ${file}, outside ${OWNER_ONLY_DIR}`,
+    );
+  }
 
   const sourceFiles = (dir: string): string[] =>
     fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -160,14 +186,14 @@ async function main() {
   let actionCount = 0;
   const actionProblems: string[] = [];
   for (const file of sourceFiles(path.join(process.cwd(), "src"))) {
-    const { problems, actions } = scanServerActions(fs.readFileSync(file, "utf8"));
-    const rel = path.relative(process.cwd(), file);
+    const rel = path.relative(process.cwd(), file).split(path.sep).join("/");
+    const { problems, actions } = scanServerActions(fs.readFileSync(file, "utf8"), ownerOnlyFile(rel));
     actionProblems.push(...problems.map((p) => `${rel}: ${p}`));
     actionCount += actions;
   }
   assert(
     actionProblems.length === 0,
-    `every Server Action under src starts with requireMember() or requireOwner()${
+    `every Server Action under src starts with requireMember() or requireOwner(), and with requireOwner() under ${OWNER_ONLY_DIR}${
       actionProblems.length ? `:\n  ${actionProblems.join("\n  ")}` : ""
     }`,
   );
