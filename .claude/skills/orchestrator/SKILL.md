@@ -68,7 +68,7 @@ skill only when they say to. Rules say what to do, not why.
 ## Getting oriented (every session, every check-in)
 
 1. Get your session id: `claude-code-remote:get_session` with no arguments.
-   It goes in both briefs.
+   It goes in every brief.
 2. Set up or refresh the epic worktree (ccpm `conventions.md`, "Git /
    Worktree Conventions"). Read state and run `next.sh`, `blocked.sh` and
    `in-progress.sh` from its root, never from `main`.
@@ -211,7 +211,8 @@ these changes:
    as bookkeeping. For changed tasks on an epic already synced, re-run the
    sync for new task files and update changed issue bodies as in per-task
    step 7.
-8. **Close:** archive the definition and review chats, delete the pending
+8. **Close,** after the stakeholder merges the PR (or, for a spike, once
+   its findings are passed on): archive the definition and review chats, delete the pending
    check-in (`claude-code-remote:delete_trigger`), and unsubscribe from the
    PR. New or changed tasks then go through the per-task loop.
 
