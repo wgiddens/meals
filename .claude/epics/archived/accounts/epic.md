@@ -1,9 +1,9 @@
 ---
 name: accounts
-status: in-progress
+status: completed
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-11T03:15:00Z
-progress: 87%
+updated: 2026-11-11T03:36:15Z
+progress: 100%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
 ---
@@ -245,7 +245,7 @@ creating the Google OAuth client and setting the Vercel variables.
 - [x] #13 - Passkeys: add, remove and sign in (moved to the `passkeys` PRD)
 - [x] #14 - Family page: members, invitations and owner controls (parallel: true)
 - [x] #15 - Automated checks for the account rules (parallel: true)
-- [ ] #16 - Documentation, deployment setup and production check (parallel: false)
+- [x] #16 - Documentation, deployment setup and production check (parallel: false)
 
 Total tasks: 8
 Parallel tasks: 4
