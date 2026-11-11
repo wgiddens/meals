@@ -250,6 +250,53 @@ an unsealable profile. Production also accepted Google ID-token sign-in.
   ran on `http://localhost`, which an https-only pattern cannot match. The
   same flow, with a matching preview, is covered by the check:auth child.
 
+## Stakeholder decision: production and previews fully separate (option 1)
+- **Production never runs the proxy.** `oauthProxyRole()` returns
+  `production` whenever `VERCEL_ENV=production` and ignores every
+  `OAUTH_PROXY_*` variable. If any is set, it logs a warning.
+  - `oAuthProxy` and the destination guard are not loaded.
+  - The hand-back refusal stays as a second layer, though the routes don't
+    exist there.
+  - `trustedOrigins()` adds no proxy origin in production.
+  - Production signs in with its own Google client directly.
+- **The fixed role exists only on the designated preview**, detected as
+  before (`VERCEL_BRANCH_URL` equals `OAUTH_PROXY_URL`): `epic/accounts`
+  today, and a long-lived branch such as `auth-proxy` after the epic merges.
+- **`.env.example`** now says:
+  - production has its own Google client, its own secret and no
+    `OAUTH_PROXY_*`;
+  - previews have a second Google client, whose only redirect URI is the
+    fixed preview's callback;
+  - after the merge, the fixed branch must track `main`.
+
+  The old "same `OAUTH_PROXY_SECRET` on production" guidance is gone.
+
+### Verified (separation)
+- typecheck, lint, smoke (425 checks) and `env -u DATABASE_URL npm run build`
+  pass.
+- check:auth proxy child process, with production given `OAUTH_PROXY_*` by
+  mistake:
+  - role `production`;
+  - plugins are only `meals-refuse-oauth-proxy-hand-back` (no
+    `oauth-proxy`, no destination guard);
+  - it doesn't trust the proxy address;
+  - its own sign-in goes to its own callback, unproxied, and completes;
+  - forged hand-backs on both paths get 404 and sign no one in;
+  - forged proxy packages sent to its callback get `error=state_mismatch`
+    with no Google exchange and no profile;
+  - ID-token sign-in is refused.
+- check:auth main process: production trusts no proxy origin even with
+  `OAUTH_PROXY_URL` set.
+- Mutation: letting production take a proxy role when `OAUTH_PROXY_URL` is
+  set makes check:auth fail.
+- By hand on `next start` (`VERCEL_ENV=production`, all `OAUTH_PROXY_*`
+  set):
+  - its own sign-in uses its own redirect URI and a plain 32-character
+    state;
+  - both hand-back paths return 404;
+  - ID-token sign-in returns 404 `ID_TOKEN_NOT_SUPPORTED`;
+  - the "ignored" warning is logged.
+
 ## Open
 - **Residual:** whoever holds `OAUTH_PROXY_SECRET` (the Preview
   environment) can, from their own browser, forge a hand-back to a preview

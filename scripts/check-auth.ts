@@ -127,7 +127,8 @@ async function proxyChild() {
       ...preview,
       BETTER_AUTH_SECRET: "check-auth-production-secret-0123456789",
       BETTER_AUTH_URL: PROD,
-      OAUTH_PROXY_URL: PROD,
+      // Set by mistake: production must ignore every OAUTH_PROXY_* variable.
+      OAUTH_PROXY_URL: FIXED,
       VERCEL_ENV: "production",
       VERCEL_URL: "meals-prd123-fam.vercel.app",
       VERCEL_BRANCH_URL: "meals-git-main-fam.vercel.app",
@@ -142,10 +143,11 @@ async function proxyChild() {
 
   assert(oauthProxyRole(deployments.fixed) === "fixed", "proxy role: the fixed deployment (VERCEL_BRANCH_URL is the proxy) is fixed");
   assert(oauthProxyRole(deployments.preview) === "receiver", "proxy role: a preview is a receiver");
-  assert(oauthProxyRole(deployments.production) === "fixed", "proxy role: production is fixed");
   assert(
-    oauthProxyRole({ ...deployments.production, OAUTH_PROXY_URL: FIXED }) === "fixed",
-    "proxy role: production is fixed even when the proxy is another deployment",
+    oauthProxyRole(deployments.production) === "production" &&
+      oauthProxyRole({ ...deployments.production, OAUTH_PROXY_URL: PROD, VERCEL_BRANCH_URL: new URL(PROD).host }) === "production" &&
+      oauthProxyRole({ VERCEL_ENV: "production" }) === "production",
+    "proxy role: production is always production, whatever OAUTH_PROXY_* says",
   );
   assert(
     oauthProxyRole({ ...preview, OAUTH_PROXY_SECRET: undefined }) === "off" &&
@@ -290,13 +292,35 @@ async function proxyChild() {
       const before = await countRows(name);
       const res = await call(name, await forge(base, state, apiPath));
       const after = await countRows(name);
+      // The fixed preview refuses it; production has no such route at all.
+      const refused =
+        name === "production"
+          ? res.status === 404 || res.headers.get("location") === "/sign-in?error=proxy_hand_back_refused"
+          : res.headers.get("location") === "/sign-in?error=proxy_hand_back_refused";
       assert(
-        res.headers.get("location") === "/sign-in?error=proxy_hand_back_refused" &&
-          after.users === before.users && after.sessions === before.sessions &&
+        refused && after.users === before.users && after.sessions === before.sessions &&
           !res.headers.getSetCookie().some((c) => c.includes("session_token")),
         `${name} refuses a forged hand-back on ${apiPath} and signs no one in (${res.status} ${res.headers.get("location")})`,
       );
     }
+  }
+
+  // Production never runs the proxy, even with OAUTH_PROXY_* set: the plugin
+  // is not loaded, only the hand-back refusal (a second layer) is, and it
+  // trusts no proxy origin.
+  {
+    const prodCtx = await instances.production.auth.$context;
+    const ids = (prodCtx.options.plugins ?? []).map((plugin) => plugin.id);
+    assert(
+      !ids.includes("oauth-proxy") && ids.includes("meals-refuse-oauth-proxy-hand-back") && !ids.includes("meals-guard-oauth-proxy-destinations"),
+      `production with OAUTH_PROXY_* set loads no oAuthProxy, only the hand-back refusal (${ids.join(", ")})`,
+    );
+    assert(!prodCtx.isTrustedOrigin(FIXED), "production does not trust the proxy's address");
+    const own = await startSignIn("production", PROD, "/plan");
+    assert(
+      own.searchParams.get("redirect_uri") === `${PROD}/api/auth/callback/google` && (own.searchParams.get("state") ?? "").length <= 64,
+      "production's Google sign-in goes straight back to production, unproxied",
+    );
   }
 
   // A state package sealed with the proxy secret for a foreign destination,
@@ -321,8 +345,14 @@ async function proxyChild() {
       const code = Buffer.from(JSON.stringify({ email: OWNER_EMAIL, nonce: "" })).toString("base64url");
       const res = await call(name, `${base}/api/auth/callback/google?code=${code}&state=${encodeURIComponent(pkg)}`);
       const location = res.headers.get("location") ?? "";
+      // The fixed preview refuses the destination; production, with no proxy,
+      // sees an unknown state. Either way nothing goes to Google or anywhere else.
+      const refused =
+        name === "production"
+          ? location.startsWith("/sign-in?error=") || location.startsWith(`${PROD}/sign-in?error=`)
+          : location === "/sign-in?error=proxy_destination_refused";
       assert(
-        location === "/sign-in?error=proxy_destination_refused" && !location.includes("profile=") && tokenExchanges === exchangesBefore,
+        refused && !location.includes("evil") && !location.includes("profile=") && tokenExchanges === exchangesBefore,
         `${name} refuses a proxied sign-in for ${label}, before any Google exchange (${res.status} ${location})`,
       );
     }
@@ -1032,7 +1062,7 @@ async function main() {
   const trustedCases: [string, Record<string, string | undefined>][] = [
     ["a preview", previewEnv],
     ["production", { NODE_ENV: "production", VERCEL_ENV: "production", VERCEL_URL: "meals-x-fam.vercel.app", VERCEL_BRANCH_URL: "meals-git-main-fam.vercel.app" }],
-    ["production with the proxy", { NODE_ENV: "production", VERCEL_ENV: "production", OAUTH_PROXY_URL: "https://meals.example.com" }],
+    ["production with OAUTH_PROXY_URL set by mistake", { NODE_ENV: "production", VERCEL_ENV: "production", OAUTH_PROXY_URL: "https://meals-git-epic-accounts-fam.vercel.app" }],
     ["development", { NODE_ENV: "development" }],
     ["development on a Vercel preview env", { NODE_ENV: "development", VERCEL_ENV: "preview", VERCEL_URL: "x.vercel.app" }],
   ];
@@ -1048,6 +1078,10 @@ async function main() {
       `${label}: localhost is trusted ${production ? "not at all" : "(development only)"}`,
     );
   }
+  assert(
+    trustedOrigins({ NODE_ENV: "production", VERCEL_ENV: "production", OAUTH_PROXY_URL: "https://meals-git-epic-accounts-fam.vercel.app" }).length === 0,
+    "production trusts no proxy address, even with OAUTH_PROXY_URL set",
+  );
   assert(
     trustedOrigins({ NODE_ENV: "production", VERCEL_ENV: "production", VERCEL_URL: "meals-x-fam.vercel.app" }).length === 0,
     "production trusts nothing beyond BETTER_AUTH_URL when the proxy is off (not even its own per-deployment URL)",

@@ -74,7 +74,8 @@ export function oauthProxyOrigin(env: Env = process.env): string | null {
  *   - on a Vercel preview, that deployment's own two addresses (VERCEL_URL,
  *     the per-deployment one, and VERCEL_BRANCH_URL, the per-branch one),
  *     which Vercel sets and a request cannot change;
- *   - the OAuth proxy's fixed address, which is ours too.
+ *   - the OAuth proxy's fixed address, which is ours too, except in
+ *     production, which has nothing to do with the proxy.
  *
  * This is what keeps the OAuth proxy from being an open redirect. The proxy
  * deployment sends people on to the address sealed in the sign-in's state,
@@ -97,42 +98,49 @@ export function trustedOrigins(env: Env = process.env): string[] {
     }
   }
   const proxy = oauthProxyOrigin(env);
-  if (proxy) origins.add(proxy);
+  if (proxy && env.VERCEL_ENV !== "production") origins.add(proxy);
   return [...origins];
 }
 
 /**
  * How this deployment takes part in Google sign-in through the OAuth proxy:
  *
- *   "off"       OAUTH_PROXY_URL is unset (or OAUTH_PROXY_SECRET is missing,
- *               see below): Google redirects straight back here.
- *   "fixed"     this is the fixed address Google redirects to, or production.
- *               It exchanges codes for proxied sign-ins and hands them back,
- *               and runs its own sign-ins directly, but it REFUSES every
- *               hand-back (see refuseProxyHandBacks()).
- *   "receiver"  a preview (or a local run): its Google sign-ins go through
- *               the fixed address and come back as a sealed hand-back.
+ *   "production" VERCEL_ENV=production. Production and previews are fully
+ *                separate (the stakeholder's decision): production signs in
+ *                with its own Google client directly, ignores every
+ *                OAUTH_PROXY_* variable even if set by mistake, never loads
+ *                the oAuthProxy plugin, and still refuses the hand-back paths
+ *                as a second layer.
+ *   "off"        OAUTH_PROXY_URL is unset (or OAUTH_PROXY_SECRET is missing,
+ *                see below): Google redirects straight back here.
+ *   "fixed"      the designated preview Google redirects every preview
+ *                sign-in to (VERCEL_BRANCH_URL is OAUTH_PROXY_URL): today the
+ *                `epic/accounts` branch preview, after the epic merges a
+ *                long-lived branch such as `auth-proxy`. It exchanges codes
+ *                and hands sign-ins back to previews matching
+ *                OAUTH_PROXY_PREVIEW_PATTERN, runs its own sign-ins directly,
+ *                and REFUSES every hand-back sent to it.
+ *   "receiver"   any other preview (or a local run): its Google sign-ins go
+ *                through the fixed preview and come back as a sealed
+ *                hand-back, accepted only in the browser that started it.
  *
  * Decided from the environment only, never from the request's host: on
  * Vercel, VERCEL_ENV and VERCEL_BRANCH_URL are set per deployment and a
- * request cannot change them. Production is always "fixed" so that it can
- * never accept a hand-back, which anyone holding the preview environment's
- * proxy secret could forge.
+ * request cannot change them.
  */
-export type OAuthProxyRole = "off" | "fixed" | "receiver";
+export type OAuthProxyRole = "production" | "off" | "fixed" | "receiver";
 
 export function oauthProxyRole(env: Env = process.env): OAuthProxyRole {
+  if (env.VERCEL_ENV === "production") return "production";
   const proxy = oauthProxyOrigin(env);
   if (!proxy || !oauthProxySecret(env)) return "off";
-  if (env.VERCEL_ENV === "production" || originOf(env.VERCEL_BRANCH_URL) === proxy) return "fixed";
+  if (originOf(env.VERCEL_BRANCH_URL) === proxy) return "fixed";
   return "receiver";
 }
 
 /**
  * The secret that seals the proxy's hand-offs. It must be set, and must not be
- * BETTER_AUTH_SECRET: every deployment taking part shares it, previews
- * included, so it must never be a secret production relies on for anything
- * else. Without a usable one the proxy stays off and previews fail closed
+ * BETTER_AUTH_SECRET: every preview taking part shares it. Without a usable one the proxy stays off and previews fail closed
  * (Google refuses their unregistered redirect address).
  */
 export function oauthProxySecret(env: Env = process.env): string | null {
@@ -339,6 +347,12 @@ function bindProxyHandBacksToBrowser(proxySecret: string): BetterAuthPlugin {
  */
 function proxyPlugins(env: Env): BetterAuthPlugin[] {
   const role = oauthProxyRole(env);
+  if (role === "production") {
+    if (Object.keys(env).some((name) => name.startsWith("OAUTH_PROXY_") && env[name]?.trim())) {
+      console.warn("OAUTH_PROXY_* is set in production and ignored: production never runs the OAuth proxy.");
+    }
+    return [refuseProxyHandBacks()];
+  }
   if (role === "off") {
     if (oauthProxyOrigin(env)) {
       console.error(
