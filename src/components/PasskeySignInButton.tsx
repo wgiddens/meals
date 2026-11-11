@@ -64,8 +64,11 @@ export function PasskeySignInButton({ next, rpID }: { next: string; rpID: string
 /** A fixed message for each outcome; never the raw error text. */
 function signInMessage(code: string | undefined): string {
   switch (code) {
+    // Closing the browser's passkey prompt arrives as NotAllowedError, which
+    // @simplewebauthn passes through as ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY.
     case "AUTH_CANCELLED":
     case "ERROR_CEREMONY_ABORTED":
+    case "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY":
       return "Passkey sign-in was cancelled.";
     case "PASSKEY_NOT_FOUND":
       return "That passkey isn’t on any account here. It may have been removed. Continue with Google instead.";

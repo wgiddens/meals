@@ -622,15 +622,22 @@ async function main() {
       const json = (await response.clone().json().catch(() => null)) as Record<string, unknown> | null;
       return { response, status: response.status, json, code: json?.code as string | undefined };
     };
-    /** "Add a passkey" on /account, for whoever `cookie` belongs to. */
+    /**
+     * "Add a passkey" on /account, for whoever `cookie` belongs to, as
+     * PasskeyList does it: register with no name (so the WebAuthn user stays
+     * the member), then label the stored passkey with update-passkey.
+     */
     const registerPasskey = async (cookie: string, authenticator: Authenticator, name: string) => {
       const options = await call("GET", "/passkey/generate-register-options", cookie);
-      if (options.status !== 200) return options;
+      if (options.status !== 200) return { ...options, webAuthnUser: undefined };
+      const webAuthnUser = options.json!.user as { name?: string; displayName?: string } | undefined;
       const jar = withCookies(cookie, options.response);
-      return call("POST", "/passkey/verify-registration", jar, {
+      const verified = await call("POST", "/passkey/verify-registration", jar, {
         response: authenticator.create(options.json!.challenge as string),
-        name,
       });
+      if (verified.status !== 200) return { ...verified, webAuthnUser };
+      const named = await call("POST", "/passkey/update-passkey", cookie, { id: verified.json!.id, name });
+      return { ...named, webAuthnUser };
     };
     /** "Use a passkey" on /sign-in, from a browser with no session. */
     const passkeySignIn = async (authenticator: Authenticator) => {
@@ -656,6 +663,10 @@ async function main() {
     assert(
       added.status === 200 && patKeys.length === 1 && patKeys[0].credentialID === patPhone.id && patKeys[0].name === "Pat's phone",
       `11.1 a signed-in member adds a passkey through the real registration ceremony (got ${added.status} ${added.code ?? ""})`,
+    );
+    assert(
+      added.webAuthnUser?.name === patEmail && added.webAuthnUser?.displayName === patEmail,
+      `11.1b the WebAuthn user the device stores is the member (their email), not the passkey's label, so a shared device's picker tells members apart (got ${added.webAuthnUser?.name})`,
     );
     const patLaptop = softwareAuthenticator();
     await registerPasskey(patSignIn.cookie, patLaptop, "Pat's laptop");

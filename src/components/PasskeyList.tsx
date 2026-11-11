@@ -17,7 +17,8 @@ const MAX_NAME_LENGTH = 50;
  *
  * Adding and removing go through Better Auth's passkey endpoints, which act
  * only on the signed-in member's own passkeys. Adding needs a recent sign-in
- * (within a day); otherwise the member is asked to sign in again first. The
+ * (within a day, by Google or a passkey); otherwise the member is asked to
+ * sign in again first. The
  * list itself is read on the server, so after a change the page is refreshed.
  */
 export function PasskeyList({ passkeys, rpID }: { passkeys: PasskeyItem[]; rpID: string }) {
@@ -33,11 +34,17 @@ export function PasskeyList({ passkeys, rpID }: { passkeys: PasskeyItem[]; rpID:
     setBusy("add");
     setMessage(null);
     try {
-      const label = name.trim() || deviceName;
-      const { error } = await authClient.passkey.addPasskey({ name: label.slice(0, MAX_NAME_LENGTH) });
-      if (error) {
-        setMessage({ kind: "error", text: addMessage("code" in error ? error.code : undefined) });
+      const label = (name.trim() || deviceName).slice(0, MAX_NAME_LENGTH);
+      // No `name` here: the plugin would also use it as the WebAuthn user
+      // name, and the device's passkey picker would then show "iPad" rather
+      // than whose passkey it is. That stays the member's email; the label
+      // for this list is set on the stored passkey afterwards.
+      const { data, error } = await authClient.passkey.addPasskey();
+      if (error || !data) {
+        setMessage({ kind: "error", text: addMessage(error && "code" in error ? error.code : undefined) });
       } else {
+        // If naming fails the passkey still works; the list calls it "Passkey".
+        await authClient.passkey.updatePasskey({ id: data.id, name: label }).catch(() => undefined);
         setName("");
         setMessage({ kind: "done", text: "Passkey added. Next time, choose “Use a passkey” to sign in." });
         router.refresh();
@@ -126,7 +133,7 @@ export function PasskeyList({ passkeys, rpID }: { passkeys: PasskeyItem[]; rpID:
 function addMessage(code: string | undefined): string {
   switch (code) {
     case "SESSION_NOT_FRESH":
-      return "For your security, adding a passkey needs a recent sign-in. Sign out, sign in again with Google, then add it.";
+      return "For your security, adding a passkey needs a recent sign-in. Sign out, sign in again, then add it.";
     case "ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED":
       return "This device already has a passkey for your account.";
     case "ERROR_CEREMONY_ABORTED":

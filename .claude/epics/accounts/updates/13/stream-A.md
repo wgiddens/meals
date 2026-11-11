@@ -25,3 +25,9 @@ Every stream in `13-analysis.md`, done in order by one implementer.
   the local instance and on preview and production instances.
 - Browser check with Playwright's virtual authenticator against
   `next start`: see progress.md.
+- Review fixes (PR #25, findings 1, 3 and 4): `PasskeyList` registers with
+  no `name`, so the WebAuthn user stays the member's email, then labels the
+  stored passkey with `updatePasskey` (check 11.1b). Cancelling the sign-in
+  prompt (`ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY`) shows "cancelled". The
+  stale-session message no longer says "with Google". Findings 2 and 5 are
+  on hold for the stakeholder.

@@ -60,6 +60,19 @@ Implemented on branch `claude/issue-13-passkeys`; draft PR #25 into
 - The list is read on the server (own passkeys only, by member id); add and
   remove go through Better Auth's endpoints, which check ownership.
 
+## Review fixes (PR #25)
+- 1: register with no `name` (the plugin also used it as the WebAuthn user
+  name, so a shared device's picker showed "iPad" instead of the member);
+  the label is set afterwards with `updatePasskey`. Check 11.1b asserts the
+  registration options' user is the member's email.
+- 3: a cancelled passkey prompt (`ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY`)
+  shows "Passkey sign-in was cancelled."
+- 4: the stale-session message says "sign in again" (Google or a passkey).
+  The up-front hint was skipped: the page doesn't read the session's
+  creation time today.
+- 2 and 5: on hold pending the stakeholder.
+- Rerun: typecheck, lint, smoke, build, and the browser check (19 steps).
+
 ## Not done here
 - `.env.example` and the docs don't yet describe passkeys and the
   `BETTER_AUTH_URL` requirement; that's #16's documentation task.
