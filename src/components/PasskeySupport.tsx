@@ -7,11 +7,12 @@ import { useSyncExternalStore } from "react";
  *
  *   - The browser must have WebAuthn (`PublicKeyCredential`). Browsers without
  *     it get no passkey controls at all.
- *   - The page must be on the passkey's domain, `rpID` (from
- *     passkeyRelyingParty() in src/lib/auth.ts), or a subdomain of it. A
- *     browser refuses a passkey for any other domain, so on, say, a Vercel
- *     preview's per-deployment address the controls are hidden rather than
- *     offered and then failing.
+ *   - The page's hostname must be the passkey's domain, `rpID` (from
+ *     passkeyRelyingParty() in src/lib/auth.ts), exactly. The server accepts
+ *     a passkey ceremony from that one origin only, so on any other address,
+ *     such as a Vercel preview's per-deployment one or 127.0.0.1 in local
+ *     development, the controls are hidden rather than offered and then
+ *     failing.
  *
  * False while rendering on the server and during hydration, so the controls
  * appear only once the browser has said yes and never flash on and off.
@@ -30,7 +31,5 @@ function subscribeNever(): () => void {
 
 function passkeysAvailable(rpID: string): boolean {
   if (typeof window === "undefined" || typeof window.PublicKeyCredential !== "function") return false;
-  const host = window.location.hostname.toLowerCase();
-  const domain = rpID.toLowerCase();
-  return host === domain || host.endsWith(`.${domain}`);
+  return window.location.hostname.toLowerCase() === rpID.toLowerCase();
 }

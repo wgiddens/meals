@@ -602,13 +602,19 @@ async function main() {
       }
       return [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
     };
-    const call = async (method: "GET" | "POST", endpoint: string, cookie: string, body?: unknown) => {
-      const response = await auth.handler(
-        new Request(`${ORIGIN}/api/auth${endpoint}`, {
+    const call = async (
+      method: "GET" | "POST",
+      endpoint: string,
+      cookie: string,
+      body?: unknown,
+      on: { auth: typeof auth; origin: string } = { auth, origin: ORIGIN },
+    ) => {
+      const response = await on.auth.handler(
+        new Request(`${on.origin}/api/auth${endpoint}`, {
           method,
           headers: {
             ...(cookie ? { cookie } : {}),
-            ...(body ? { "content-type": "application/json", origin: ORIGIN } : {}),
+            ...(body ? { "content-type": "application/json", origin: on.origin } : {}),
           },
           body: body ? JSON.stringify(body) : undefined,
         }),
@@ -821,6 +827,181 @@ async function main() {
     );
     const devOwners = await owners();
     assert(devOwners.length === 1 && devOwners[0].id === member.DEV_OWNER.id, "8.9 the dev owner is still the only owner");
+
+    // ---- [12] The passkey relying party on each kind of deployment ----------------------
+    section("[12] passkeys are bound to the deployment's own address: previews, production, and production without BETTER_AUTH_URL");
+    // Each deployment gets its own instance of the real getAuth(), built with
+    // that deployment's environment on its own temporary embedded database,
+    // and the ceremonies run through its HTTP handler.
+    const FIXED = "https://meals-git-epic-accounts-fam.vercel.app";
+    const BRANCH = "https://meals-git-feature-fam.vercel.app";
+    const DEPLOYMENT = "https://meals-abc123-fam.vercel.app";
+    const PRODUCTION = "https://meals.example.com";
+    const deploymentEnv = {
+      NODE_ENV: "production",
+      BETTER_AUTH_SECRET: "check-accounts-deployment-secret-0123456789",
+      GOOGLE_CLIENT_ID: "check-id",
+      GOOGLE_CLIENT_SECRET: "check-secret",
+      DATABASE_URL: undefined,
+      NEXT_RUNTIME: undefined,
+    };
+    const previewEnv = {
+      ...deploymentEnv,
+      VERCEL_ENV: "preview",
+      BETTER_AUTH_URL: FIXED,
+      OAUTH_PROXY_URL: FIXED,
+      OAUTH_PROXY_SECRET: "check-accounts-proxy-secret-0123456789",
+      VERCEL_URL: new URL(DEPLOYMENT).host,
+      VERCEL_BRANCH_URL: new URL(BRANCH).host,
+    };
+    const productionEnv = {
+      ...deploymentEnv,
+      VERCEL_ENV: "production",
+      BETTER_AUTH_URL: PRODUCTION,
+      VERCEL_URL: "meals-prd123-fam.vercel.app",
+      VERCEL_BRANCH_URL: "meals-git-main-fam.vercel.app",
+    };
+    /** Runs fn against a fresh getAuth() instance built with `vars`. */
+    const onDeployment = async <T,>(
+      vars: Record<string, string | undefined>,
+      fn: (deployed: { auth: typeof auth; userCookie: string; userId: string }) => Promise<T>,
+    ) => {
+      const savedDb = globalThis.__mealsDb;
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "meals-accounts-deployment-"));
+      try {
+        return await withEnv({ ...vars, PGLITE_DATA_DIR: dir }, async () => {
+          globalThis.__mealsDb = undefined;
+          const deployedDb = await getDb();
+          const deployedAuth = await getAuth();
+          const deployedCtx = await deployedAuth.$context;
+          // A signed-in member to add passkeys for.
+          const id = `deployment-member-${RUN}`;
+          await deployedDb
+            .insert(schema.user)
+            .values({ id, name: "Member", email: `deployment-${RUN}@example.com`, emailVerified: true, role: "owner" });
+          const created = await deployedCtx.internalAdapter.createSession(id);
+          const signed = `${created.token}.${await makeSignature(created.token, deployedCtx.secret)}`;
+          return fn({
+            auth: deployedAuth,
+            userId: id,
+            userCookie: `${deployedCtx.authCookies.sessionToken.name}=${encodeURIComponent(signed)}`,
+          });
+        });
+      } finally {
+        globalThis.__mealsDb = savedDb;
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    /** A ceremony on `deployed`, with the browser reporting `origin` in its client data. */
+    const ceremonies = (deployed: { auth: typeof auth }, server: string) => ({
+      register: async (cookie: string, authenticator: Authenticator, origin = server) => {
+        const on = { auth: deployed.auth, origin: server };
+        const options = await call("GET", "/passkey/generate-register-options", cookie, undefined, on);
+        if (options.status !== 200) return { ...options, rpID: undefined };
+        const jar = withCookies(cookie, options.response);
+        const verified = await call(
+          "POST",
+          "/passkey/verify-registration",
+          jar,
+          { response: authenticator.create(options.json!.challenge as string, origin) },
+          on,
+        );
+        return { ...verified, rpID: (options.json!.rp as { id?: string } | undefined)?.id };
+      },
+      signIn: async (authenticator: Authenticator, origin = server) => {
+        const on = { auth: deployed.auth, origin: server };
+        const options = await call("GET", "/passkey/generate-authenticate-options", "", undefined, on);
+        if (options.status !== 200) return { ...options, rpID: undefined, session: null };
+        const jar = withCookies("", options.response);
+        const verified = await call(
+          "POST",
+          "/passkey/verify-authentication",
+          jar,
+          { response: authenticator.get(options.json!.challenge as string, origin) },
+          on,
+        );
+        const session = await deployed.auth.api.getSession({
+          headers: new Headers({ cookie: withCookies(jar, verified.response) }),
+        });
+        return { ...verified, rpID: options.json!.rpId as string | undefined, session };
+      },
+    });
+
+    await onDeployment(previewEnv, async (deployed) => {
+      const { register, signIn } = ceremonies(deployed, BRANCH);
+      const phone = softwareAuthenticator(new URL(BRANCH).hostname);
+      const added = await register(deployed.userCookie, phone);
+      assert(
+        added.status === 200 && added.rpID === new URL(BRANCH).hostname,
+        `12.1 on a preview, a passkey is registered for the preview's own branch host, not the proxy's BETTER_AUTH_URL (got ${added.status} ${added.code ?? ""}, rp ${added.rpID})`,
+      );
+      const back = await signIn(phone);
+      assert(
+        back.status === 200 && back.rpID === new URL(BRANCH).hostname && back.session?.user.id === deployed.userId,
+        `12.2 and it signs in on that host (got ${back.status} ${back.code ?? ""})`,
+      );
+      for (const [label, origin] of [
+        ["its per-deployment address VERCEL_URL, which is a trusted origin", DEPLOYMENT],
+        ["the fixed proxy preview, BETTER_AUTH_URL", FIXED],
+        ["another preview", "https://meals-git-other-fam.vercel.app"],
+      ] as const) {
+        const elsewhere = await signIn(phone, origin);
+        assert(
+          elsewhere.status !== 200 && elsewhere.session === null,
+          `12.3 on a preview, a ceremony from ${label} is refused (got ${elsewhere.status} ${elsewhere.code ?? ""})`,
+        );
+      }
+      const lookalike = softwareAuthenticator(new URL(FIXED).hostname);
+      const wrongRp = await register(deployed.userCookie, lookalike);
+      assert(
+        wrongRp.status !== 200,
+        `12.4 on a preview, a passkey made for the proxy's domain is refused (got ${wrongRp.status} ${wrongRp.code ?? ""})`,
+      );
+    });
+
+    await onDeployment(productionEnv, async (deployed) => {
+      const { register, signIn } = ceremonies(deployed, PRODUCTION);
+      const phone = softwareAuthenticator("meals.example.com");
+      const added = await register(deployed.userCookie, phone);
+      assert(
+        added.status === 200 && added.rpID === "meals.example.com",
+        `12.5 in production, a passkey is registered for BETTER_AUTH_URL's host (got ${added.status} ${added.code ?? ""}, rp ${added.rpID})`,
+      );
+      const back = await signIn(phone);
+      assert(
+        back.status === 200 && back.session?.user.id === deployed.userId,
+        `12.6 and it signs in from BETTER_AUTH_URL's origin (got ${back.status} ${back.code ?? ""})`,
+      );
+      // Widen this instance's trusted origins with exact entries, as a
+      // misconfiguration might: the passkey origin must not follow.
+      const deployedCtx = await deployed.auth.$context;
+      const widened = ["https://meals-prd123-fam.vercel.app", "https://evil.example.com"];
+      deployedCtx.trustedOrigins.push(...widened);
+      for (const origin of widened) {
+        const elsewhere = await signIn(phone, origin);
+        assert(
+          elsewhere.status !== 200 && elsewhere.session === null,
+          `12.7 in production, a ceremony from ${origin} is refused even with it listed in trustedOrigins (got ${elsewhere.status} ${elsewhere.code ?? ""})`,
+        );
+      }
+      const registerElsewhere = await register(deployed.userCookie, softwareAuthenticator("meals.example.com"), widened[0]);
+      assert(
+        registerElsewhere.status !== 200,
+        `12.8 in production, registration from a trusted origin other than BETTER_AUTH_URL is refused (got ${registerElsewhere.status} ${registerElsewhere.code ?? ""})`,
+      );
+    });
+
+    await onDeployment({ ...productionEnv, BETTER_AUTH_URL: undefined }, async (deployed) => {
+      const { register, signIn } = ceremonies(deployed, PRODUCTION);
+      const off = [
+        await register(deployed.userCookie, softwareAuthenticator("meals.example.com")),
+        await signIn(softwareAuthenticator("localhost")),
+      ];
+      assert(
+        off.every((r) => r.status === 404),
+        `12.9 in production without BETTER_AUTH_URL the passkey endpoints do not exist: passkeys are off, not bound to localhost (got ${off.map((r) => r.status).join(", ")})`,
+      );
+    });
 
   }
 }
