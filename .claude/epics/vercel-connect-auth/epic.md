@@ -22,8 +22,10 @@ indefinite. Existing members are reset and re-invited once
 (stakeholder's decision, 2026-11-11).
 
 The epic ends when its PR has passed the full hand check on its own preview.
-Switching production over happens after the merge, from a runbook in
-`docs/DEPLOY.md`, not as an epic task.
+Production is switched from a runbook in `docs/DEPLOY.md`, not as an epic
+task. Its setup steps (connector, variable, `OWNER_EMAIL`, snapshot) are a
+precondition of the epic merge, because merging deploys production at once.
+The reset and re-invite come after the merge.
 
 The spike on `claude/spike-vercel-connect` (commits `efb960f`, `57fc2d4`) is
 the reference for the wiring. Its code isn't merged: it ran Connect beside
@@ -65,9 +67,12 @@ Rules:
   `meals.giddens.app` when `custom-domain` adds it. So the new domain is
   allowed as soon as it is live, and the old address stops being allowed
   once `custom-domain` changes `BETTER_AUTH_URL`.
-- `protocol` is `"https"` whenever `VERCEL_ENV` is set, so trusted origins
-  never gain `http://` versions of the deployed hosts. Better Auth still
-  allows `http` for loopback hosts locally.
+- `protocol` is `"https"` when `VERCEL_ENV` is `production` or `preview`,
+  so trusted origins never gain `http://` versions of the deployed hosts.
+  Otherwise it is `"auto"`: an explicit `"https"` would also apply to
+  loopback hosts and break Connect sign-in on `localhost`. That matters
+  because `vercel env pull` writes `VERCEL_ENV="development"`; confirm this
+  in task 1. The gate-table checks include `VERCEL_ENV=development`.
 - `advanced.trustedProxyHeaders` stays off.
 - `baseURL.fallback` is never set.
 - `trustedOrigins()` keeps today's rules minus the proxy origin.
@@ -210,18 +215,23 @@ exchange through Connect fails.
       address and its per-deployment address.
 
    The epic merges only when that passes.
-5. **Production after the merge**, from the runbook in `docs/DEPLOY.md`.
-   It is not an epic task.
+5. **Production: setup before the merge, reset after it.** This is the
+   runbook in `docs/DEPLOY.md`, not an epic task. Merging to `main` deploys
+   production at once. Without a connector, the gate is `closed` and the
+   family, existing sessions included, is locked out. So steps 1–5 are a
+   precondition of the epic merge.
    1. Create the production Google client and connector.
    2. Set Production's `VERCEL_CONNECT_GOOGLE`. Old code ignores it.
    3. Confirm `OWNER_EMAIL` is set on Production and that the live
       deployment was built after it was set.
-   4. Take a Neon snapshot of the production database.
-   5. Merge the epic and deploy.
-   6. Run the reset on Production.
-   7. The owner signs in, re-invites everyone, and runs the production
+   4. Check that project links are isolated: a code exchange from the epic
+      PR's preview against the production connector gets a 403.
+   5. Take a Neon snapshot of the production database.
+   6. Merge the epic; production deploys.
+   7. Run the reset on Production.
+   8. The owner signs in, re-invites everyone, and runs the production
       hand check.
-   8. Delete the old variables and Google clients.
+   9. Delete the old variables and Google clients.
 6. **Follow `AGENTS.md`:** read the bundled Next.js docs before touching
    pages. Read the installed `better-auth` and `@vercel/connect` sources for
    APIs, not memory.
@@ -231,14 +241,19 @@ exchange through Connect fails.
 Each database gets a Neon snapshot (or restore point) taken just before its
 reset.
 
-- **Before the old variables are deleted** (runbook step 8):
+- **Before the old variables are deleted** (runbook step 9):
   1. Roll back with Vercel's Instant Rollback to the last pre-epic
      deployment.
-  2. Restore the database's snapshot. The old build looks up account rows by
-     (`google`, Google's `sub`). Rows written through Connect only work for
-     it if Connect's `sub` is Google's own, so restoring is the safe default.
-     Resetting again would also work.
-- **After step 8:** recreate `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+  2. Bring back the old sign-in rows. The old build looks up account rows
+     by (`google`, Google's `sub`). Rows written through Connect only work
+     for it if Connect's `sub` is Google's own.
+     - Restoring the whole snapshot also loses every meal, plan and grocery
+       change made since it was taken, so don't do that by default.
+     - Instead, create a Neon branch from the snapshot and copy back only
+       `user`, `session`, `account`, `invitations` and `verification`.
+     - If task 5 showed `sub` is Google's own, resetting again (and
+       re-inviting) also works, with no restore at all.
+- **After step 9:** recreate `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
   for that environment first (the old build is otherwise `closed`), then
   roll back as above.
 
@@ -272,7 +287,7 @@ task 5 checks it.
 | 2 | Indefinite sessions: 400 days, daily renewal; checks updated | 1 | yes, with 3 |
 | 3 | `scripts/reset-accounts.ts`: host guard, `OWNER_EMAIL` reminder, its check | – | yes, with 1 and 2 |
 | 4 | Docs: `docs/DEPLOY.md` (Connect setup, preview steps, the production runbook with backup and rollback, no proxy, connector-replacement warning), `docs/ARCHITECTURE.md`, README, `.env.example` | 1, 2, 3 | no |
-| 5 | Preview reset and hand check on the epic PR's preview (stakeholder with an agent). Covers the treated-as-proven items and `sub` stability, gateway `redirect_uri` checking and project-link isolation (below). Also tries removing `prompt=consent` and records the token-request count | 4 | no |
+| 5 | Preview reset and hand check on the epic PR's preview (stakeholder with an agent). Covers the treated-as-proven items, `sub` stability and gateway `redirect_uri` checking (below); project-link isolation is in the production runbook. Also tries removing `prompt=consent` and records the token-request count | 4 | no |
 
 Tasks 1 and 2 both edit `src/lib/auth.ts`, so 2 waits for 1. Task 3 is a new
 file and runs beside them.
@@ -297,9 +312,9 @@ per-deployment address.
 - **The gateway checks `redirect_uri`:** an authorization request to
   `connect.vercel.com` with the Preview connector and a `redirect_uri` on a
   foreign host is refused.
-- **Project links are isolated:** a code exchange from a preview against
-  the production connector (once it exists, or a Production-only test
-  connector) gets a 403.
+- **Project links are isolated:** checked in the production runbook (step
+  4), once the production connector exists and before the merge, not
+  here.
 
 **Recorded afterwards:** the `email_verified` value seen, whether
 `prompt=consent` could be removed, and the connector's token-request count.
@@ -349,6 +364,9 @@ per-deployment address.
   finds nothing. `docs/DEPLOY.md` mentions `GOOGLE_CLIENT_SECRET` only in
   the rollback steps.
 - Task 5's hand check passes on the epic PR's preview before the merge.
+- The production runbook's steps 1–5 (production client and connector,
+  Production's `VERCEL_CONNECT_GOOGLE`, `OWNER_EMAIL` confirmed in the live
+  deployment, project-link isolation, snapshot) are done before the merge.
 
 ## Estimated Effort
 

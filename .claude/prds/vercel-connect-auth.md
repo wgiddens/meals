@@ -289,9 +289,11 @@ Acceptance criteria:
   reset. It refuses to run without an explicit confirmation naming the
   database host, and a Neon snapshot of the database is taken first.
 - **Order and rollback:** Preview is reset and hand-checked on the epic
-  PR's preview before the epic merges; Production switches after the
-  merge, from a runbook in `docs/DEPLOY.md` with a snapshot and a rollback
-  path (the epic's "Rollback").
+  PR's preview before the epic merges. Production's connector, variable,
+  `OWNER_EMAIL` check and snapshot are done before the merge (merging
+  deploys production at once); its reset follows the merge. Both are in a
+  runbook in `docs/DEPLOY.md`, with a rollback path (the epic's
+  "Rollback").
 - **Errors:** `ConnectError`s are logged with code and status only, never
   the vendor payload. The sign-in page explains `oauth_code_verification_failed`
   with a generic message.
