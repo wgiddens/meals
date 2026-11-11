@@ -59,6 +59,9 @@ Acceptance criteria:
 - Preview's database is separate from production's, and a check proves it.
 - Preview sign-in works through the fixed proxy branch, as documented in
   `docs/DEPLOY.md`.
+- `auth-proxy` exists and tracks `main`; `docs/DEPLOY.md` §3 steps 1-5 are
+  done and checked on one PR preview, and its now-stale "until the accounts
+  epic merges" wording is updated.
 
 ## Current state (2026-11-11)
 
