@@ -17,9 +17,11 @@ this one address from then on.
 It is mostly setup: a DNS record, the Vercel project's domain settings, and
 pointing the app's own configuration at the new address. The stakeholder
 decided on 2026-11-11 to put `accounts` live on the generated `*.vercel.app`
-address first. So this PRD also moves accounts' sign-in: the production
-Google client gets the new callback URL, `BETTER_AUTH_URL` changes, and
-everyone signs in once more, because sessions are tied to the address. It
+address first. So this PRD also moves accounts' sign-in: `BETTER_AUTH_URL`
+changes, and everyone signs in once more, because sessions are tied to the
+address. Google itself is not touched: sign-in goes through Vercel Connect
+(`vercel-connect-auth`, built before this PRD), whose only Google redirect
+URI is `https://connect.vercel.com/callback`. It
 should be done before `passkeys`, which are tied to the domain they were
 created on.
 
@@ -28,11 +30,10 @@ created on.
 - **The address is hard to remember and share.** The text that brings
   Shannon the weekly plan should carry a short link we recognise, not a
   generated Vercel address.
-- **Sign-in needs an address that won't change.** `accounts` registers one
-  Google callback URL and binds sessions to the address; `passkeys` will tie
-  each passkey to the domain. Accounts launches on `*.vercel.app`, so this
-  move re-registers Google and signs everyone out once; doing it before
-  `passkeys` avoids losing passkeys too.
+- **Sign-in needs an address that won't change.** Sessions are bound to
+  the address, and `passkeys` will tie each passkey to the domain. Accounts
+  launches on `*.vercel.app`, so this move signs everyone out once; doing it
+  before `passkeys` avoids losing passkeys too.
 - **Assistants are configured with a URL.** Each one we connect stores the
   MCP endpoint address; moving it later means reconfiguring every assistant.
 - **Email needs a domain we own.** The `email` PRD cannot start until one is
@@ -66,8 +67,13 @@ As a family member, Google sign-in works at `meals.giddens.app`.
 Acceptance criteria:
 - The app's configured site address (`BETTER_AUTH_URL` once `accounts` is
   built) is `https://meals.giddens.app` in production.
-- The production Google OAuth client lists the new callback URL, and
-  sign-in with Google succeeds at the new address.
+- Sign-in with Google succeeds at the new address. The Google OAuth client
+  is unchanged (its only redirect URI is Connect's). Production's allowed
+  hosts come from `BETTER_AUTH_URL` and Vercel's
+  `VERCEL_PROJECT_PRODUCTION_URL` (`vercel-connect-auth`), so the new
+  domain is allowed as soon as it is the project's production domain, and
+  the old `*.vercel.app` address stops being allowed once `BETTER_AUTH_URL`
+  changes.
 - `docs/DEPLOY.md` states that `<production-domain>` is
   `meals.giddens.app`, keeping its placeholder convention.
 
@@ -121,8 +127,10 @@ Acceptance criteria:
 - **DNS changes are manual steps for the repo owner** in the registrar's or
   Vercel's dashboard; the epic lists them exactly.
 - **Order:** after `accounts` (stakeholder's decision, 2026-11-11, to go
-  live on the Vercel address first) and before `passkeys`. Members sign in
-  with Google once more after the move.
+  live on the Vercel address first), after `vercel-connect-auth`
+  (stakeholder's decision, 2026-11-11), and before `passkeys`. Members sign
+  in with Google once more after the move. The Google OAuth client is not
+  touched.
 
 ## Out of Scope
 
@@ -139,6 +147,9 @@ Acceptance criteria:
 
 - Ownership of `giddens.app` and access to its DNS.
 - The existing Vercel project with production deploying from `main`.
-- `accounts`, live in production. The production Google OAuth client and
-  `BETTER_AUTH_URL` are updated as part of this PRD.
+- `accounts`, live in production.
+- `vercel-connect-auth`, built first. Production's allowed hosts are the
+  hosts of `BETTER_AUTH_URL` and `VERCEL_PROJECT_PRODUCTION_URL`; this PRD
+  sets `BETTER_AUTH_URL` to `https://meals.giddens.app`. Google's only
+  redirect URI stays `https://connect.vercel.com/callback`.
 - `docs/PRODUCT.md` – it wins on conflict.

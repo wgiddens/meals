@@ -57,19 +57,18 @@ As the stakeholder, testing a preview never touches production data.
 
 Acceptance criteria:
 - Preview's database is separate from production's, and a check proves it.
-- Preview sign-in works through the fixed proxy branch, as documented in
-  `docs/DEPLOY.md`.
-- `auth-proxy` exists and tracks `main`; `docs/DEPLOY.md` §3 steps 1-5 are
-  done and checked on one PR preview, and its now-stale "until the accounts
-  epic merges" wording is updated.
+- Preview sign-in works on every preview through Vercel Connect, with no
+  fixed proxy branch. This is delivered by the `vercel-connect-auth` epic
+  (decided 2026-11-11), which replaces the earlier plan to set up
+  `auth-proxy`: no `auth-proxy` branch and no `OAUTH_PROXY_*` variables.
 
 ## Current state (2026-11-11)
 
 The `epic/accounts` branch, the fixed sign-in proxy, was deleted when the
 accounts epic merged, and no `auth-proxy` branch exists yet. Google sign-in
-on previews doesn't work until this PRD sets up `auth-proxy`
-(`docs/DEPLOY.md`, §3); the stakeholder chose to leave it until then.
-Production is unaffected.
+on previews doesn't work today. It will not be fixed with `auth-proxy`: the
+`vercel-connect-auth` PRD (decided go on 2026-11-11) moves sign-in to Vercel
+Connect, which needs no proxy branch. Production is unaffected.
 
 ## Interim measure (in place before this PRD is built)
 
@@ -87,7 +86,7 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
 
 1. Should every PR still get a preview, or only the final epic PR and PRs
    marked ready for review?
-2. Should task branches build at all, or only `epic/*`, `auth-proxy` and
+2. Should task branches build at all, or only `epic/*` and
    `main`?
 3. Does the orchestrator flow change: fewer pushes (batched tracking
    commits), or tracking moved off the deployed branches?
@@ -97,7 +96,9 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
    they branch from the Preview database, not production. Keep the one
    database, or seed previews instead?
 5. Is a paid plan worth it later, and at what point?
-6. How does this interact with `custom-domain` and the `auth-proxy` branch?
+6. ~~How does this interact with `custom-domain` and the `auth-proxy`
+   branch?~~ Moot: `vercel-connect-auth` removes `auth-proxy`, and the domain
+   move no longer touches Google.
 
 ## Out of Scope
 
@@ -106,8 +107,9 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
 
 ## Dependencies
 
-- None blocking. The interim measure can be applied today; the rest can be
-  planned any time.
-- Related: `accounts` (`docs/DEPLOY.md`, the fixed sign-in proxy branch
-  `auth-proxy`), `custom-domain`, `neon-dev-database` and
+- `vercel-connect-auth` for the preview sign-in criterion (user story 3).
+  Nothing else blocks: the interim measure can be applied today, and the
+  rest can be planned any time.
+- Related: `accounts`, `vercel-connect-auth` (preview sign-in without a
+  proxy), `custom-domain`, `neon-dev-database` and
   `neon-epic-branches`.
