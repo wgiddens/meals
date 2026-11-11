@@ -1,13 +1,14 @@
 ## Active Streams
-- All streams (sequential, one implementation chat): started 2026-11-10T21:41Z, in parallel with #12, #14 and #15
-  - Implementation chat: session_01DNZtwuftYnUVo3H2Yzcv7G
-  - Branch: claude/issue-12-sign-in-account
-  - PR: #24, opened 2026-11-10T21:58Z; marked ready 2026-11-11T00:50Z at 5ad4a92 (review: forged hand-back and open-forwarding findings fixed; 3 re-checks, last 0 findings; CI green); waiting for the stakeholder to merge
-  - Review chat: session_01DNZtwxgbJxfWyaxPEsZ3Td (started 2026-11-10T21:58Z)
-  - Pending check-in: trig_013s3ZVcV1nehTY1AgjFoDAF (fires 2026-11-11T03:32Z)
+(none)
 
 ## Queued
 (none)
 
 ## Completed
-(none yet)
+- All streams (sequential, one implementation chat): 2026-11-10T21:41Z to 2026-11-11T02:39:10Z
+  - Implementation chat: session_01DNZtwuftYnUVo3H2Yzcv7G (archived)
+  - Branch: claude/issue-12-sign-in-account
+  - PR: #24, merged by the stakeholder at 2026-11-11T02:38Z (head 5ad4a92)
+  - Review chat: session_01DNZtwxgbJxfWyaxPEsZ3Td (archived). Review found a forged hand-back (should-fix) and open forwarding of hand-backs (should-fix); both fixed; 3 re-checks, last 0 findings
+  - Stakeholder decisions: browser binding added; previews stay behind Deployment Protection; implicit account linking off; preview-pattern residual documented; production and previews fully separate
+  - Check-ins: none pending
