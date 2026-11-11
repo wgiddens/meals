@@ -1,7 +1,7 @@
 ---
 issue: 16
 started: 2026-11-11T03:10:19Z
-last_sync: 2026-11-11T03:10:19Z
+last_sync: 2026-11-11T03:17:40Z
 completion: 90%
 ---
 
@@ -36,3 +36,8 @@ Result section are in `docs/DEPLOY.md`.
 - Two passkey mentions outside this task's files: `src/lib/family.ts:263`
   ("such as passkeys", an example) and `scripts/check-auth.ts:1013`.
 - Production hand check not yet run.
+
+## PR
+- Draft PR: https://github.com/wgiddens/meals/pull/27
+
+<!-- SYNCED: 2026-11-11T03:17:40Z -->
