@@ -1,9 +1,9 @@
 ---
 name: accounts
-description: Personal accounts for one family, invite only, with Google and passkey sign-in and an owner who manages members; replaces the shared household passcode
+description: Personal accounts for one family, invite only, with Google sign-in and an owner who manages members; replaces the shared household passcode
 status: backlog
 created: 2026-11-10T16:56:42Z
-updated: 2026-11-10T18:57:52Z
+updated: 2026-11-11T03:15:00Z
 ---
 
 # PRD: accounts
@@ -11,10 +11,10 @@ updated: 2026-11-10T18:57:52Z
 ## Executive Summary
 
 Each person in the family gets their own account. There is one family, it is
-invite only, and its owner decides who is in it. People sign in with Google,
-or with a passkey (Face ID or fingerprint) once they have set one up. There
-are no passwords, and this PRD sends no email: email-link sign-in and
-invitation emails are added later by the `email` PRD.
+invite only, and its owner decides who is in it. People sign in with Google.
+There are no passwords, and this PRD sends no email: email-link sign-in and
+invitation emails are added later by the `email` PRD, and passkey sign-in by
+the `passkeys` PRD.
 
 This replaces the prototype's shared household passcode, which is removed.
 It is the first thing built: `core` and every later PRD rely on it to know
@@ -60,16 +60,9 @@ Acceptance criteria:
 - Any other Google account sees "This account hasn't been invited" and no
   account is created.
 
-### 3. Sign in with a passkey
-As a family member, after my first sign-in I use Face ID or my fingerprint
-instead.
-
-Acceptance criteria:
-- A signed-in member can add a passkey to their account from their account
-  page, and can remove it.
-- The sign-in page offers passkey sign-in; a registered passkey signs the
-  member in without going through Google.
-- A member with a lost device can always still sign in with Google.
+### 3. (Moved) Sign in with a passkey
+Split out to the `passkeys` PRD (stakeholder's decision, 2026-11-11), to keep
+this PRD to the smallest useful release.
 
 ### 4. Invite a family member
 As the owner, I add Shannon by typing her name and email.
@@ -92,7 +85,7 @@ Acceptance criteria:
 - The family page lists each member's name, email and role (owner or
   member).
 - The owner can remove a member. That member's sessions end immediately
-  and they can no longer sign in by Google or passkey.
+  and they can no longer sign in.
 - The owner cannot be removed and cannot remove themselves.
 - A member can see the family page but has no invite, cancel or remove
   controls, and the server refuses those actions from a member.
@@ -130,10 +123,8 @@ Acceptance criteria:
   add link sign-in for the same member without a second account.
 
 ### Sign-in methods
-- Google and passkey, as in stories 2 and 3. No passwords and no
-  text-message codes.
-- Passkeys are an addition to an existing account, never a way to create
-  one.
+- Google, as in story 2. No passwords and no text-message codes.
+  Passkeys come later (`passkeys`).
 
 ### Roles
 - **Owner:** invite, cancel invitations, remove members; rename the family.
@@ -143,7 +134,7 @@ Acceptance criteria:
 ### Pages
 - Sign-in.
 - Family: members, pending invitations, and the owner's controls.
-- My account: display name, passkeys, sign out.
+- My account: display name, sign out.
 
 ### Replacing the passcode
 - The passcode gate, its login page, `HOUSEHOLD_PASSCODE` and their
@@ -159,19 +150,19 @@ Acceptance criteria:
 
 ## Non-Functional Requirements
 
-- **Cost:** $0 per month. Google sign-in and passkeys are free and no email
+- **Cost:** $0 per month. Google sign-in is free and no email
   is sent.
-- **Don't hand-roll security.** Sessions, Google sign-in and passkeys come
+- **Don't hand-roll security.** Sessions and Google sign-in come
   from an established, maintained library that stores its data in the app's
   own Postgres. The epic chooses it, preferring one that can add email-link
-  sign-in later without a rewrite.
+  sign-in and passkeys later without a rewrite.
 - **Session safety:** cookies are HttpOnly, Secure in production and
   SameSite=Lax.
 - **Privacy:** the only personal data stored is name and email. Emails are
   never shown to anyone outside the family.
 - **Mobile first:** sign-in works one-handed at 375 px and takes no typing.
 - **Tests:** automated tests cover an uninvited Google account being
-  refused, a removed member losing access by both methods, and a member
+  refused, a removed member losing access, and a member
   being refused owner actions.
 - **Quality gates:** typecheck, lint, smoke check and build green in CI,
   with no sign-in secrets needed in CI.
@@ -201,9 +192,6 @@ Acceptance criteria:
   cost is accepted for now.
 - **Google sign-in needs a Google Cloud project** with an OAuth client,
   which is free.
-- **Passkeys need a stable site address.** A passkey is tied to the domain
-  it was created on, so changing the app's domain later invalidates
-  existing passkeys; members fall back to Google.
 - Children do not get accounts in this version.
 
 ## Out of Scope
@@ -211,8 +199,9 @@ Acceptance criteria:
 - Anything that sends email: invitation emails and email-link sign-in
   (`email`).
 - Multiple families, open sign-up, or creating a second family.
+- Passkeys (`passkeys`).
 - Passwords, text-message codes, and two-step verification beyond what
-  Google and passkeys already give.
+  Google already gives.
 - Child or view-only accounts, and any per-role limits on meals, allergies
   or plans.
 - Transferring ownership to another member. If ever needed it is a manual
@@ -230,4 +219,4 @@ Acceptance criteria:
 - The owner's email in deployment configuration.
 - A session secret on the deployment.
 - Nothing upstream: this is the first PRD built. `core` and `email` depend
-  on it.
+  on it; so does `passkeys`.

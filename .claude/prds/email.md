@@ -13,7 +13,7 @@ The app gains the ability to send email, through a third-party sending
 service connected to Vercel, from an address on a domain we own. Two
 features use it straight away: an **invitation email** when the owner adds a
 family member, and **sign-in by email link** as a third way in alongside
-Google and passkeys.
+Google (and passkeys, once the `passkeys` PRD is built).
 
 It also leaves behind one shared way to send a message, so later PRDs can
 email the family without setting any of this up again.

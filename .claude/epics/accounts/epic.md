@@ -2,8 +2,8 @@
 name: accounts
 status: in-progress
 created: 2026-11-10T18:13:54Z
-updated: 2026-11-11T02:39:10Z
-progress: 75%
+updated: 2026-11-11T03:15:00Z
+progress: 87%
 prd: .claude/prds/accounts.md
 github: https://github.com/wgiddens/meals/issues/8
 ---
@@ -13,17 +13,21 @@ github: https://github.com/wgiddens/meals/issues/8
 ## Overview
 
 Replace the shared household passcode with personal accounts in one
-invite-only family. Sign-in is Google or a passkey; an owner invites and
+invite-only family. Sign-in is Google; an owner invites and
 removes members. The work lands on the prototype codebase: the passcode gate
 (`src/lib/household.ts`, `src/proxy.ts`, `src/app/auth-actions.ts`,
 `src/app/login/`) is swapped for an account session, and every place that
 calls `requireHousehold()` calls a member check instead. The prototype's
 pages stay as they are; the `core` epic replaces them later.
 
+Passkeys were split out to their own PRD, `.claude/prds/passkeys.md`
+(stakeholder's decision, 2026-11-11). Task #13 is closed as moved; its draft
+PR wgiddens/meals#25 is parked as the starting point for that PRD.
+
 ## Architecture Decisions
 
 ### Sign-in library: Better Auth
-`better-auth` 1.7.x with `@better-auth/passkey`.
+`better-auth` 1.7.x. (`@better-auth/passkey` moves to the `passkeys` PRD.)
 
 - It covers everything the PRD asks for from one library: Google sign-in,
   passkeys, database sessions, and a magic-link plugin that the `email` PRD
@@ -87,16 +91,15 @@ is built on first use behind a `getAuth()` function, the same pattern as
 ## Technical Approach
 
 ### Frontend Components
-- `src/app/sign-in/page.tsx` – "Continue with Google" and "Use a passkey";
+- `src/app/sign-in/page.tsx` – "Continue with Google";
   shows "This account hasn't been invited" and "not configured" states;
   honours a safe `next` path (reuse `safeReturnPath` from the old gate).
 - `src/app/family/page.tsx` – members with role, pending invitations, and
   owner-only controls: invite (name, email), cancel, remove, rename family.
   After inviting, shows the app address to pass on.
-- `src/app/account/page.tsx` – display name, passkeys (add, remove), sign
-  out.
-- Small client components for the Google button, passkey button and
-  passkey list, using Better Auth's React client.
+- `src/app/account/page.tsx` – display name, sign out.
+- Small client components for the Google button, using Better Auth's React
+  client.
 - Layout footer: replace the passcode sign-out link with links to Family
   and My account.
 - Removed: `src/app/login/`, `src/components/LoginForm.tsx`,
@@ -104,7 +107,7 @@ is built on first use behind a `getAuth()` function, the same pattern as
 
 ### Backend Services
 - `src/lib/auth.ts` – `getAuth()`: Better Auth configured with the Drizzle
-  adapter, Google provider, passkey plugin, 90-day sessions, the invite-only
+  adapter, Google provider, 90-day sessions, the invite-only
   creation hook and the after-creation hook (set role, mark the invitation
   accepted, create the family row for the owner).
 - `src/app/api/auth/[...all]/route.ts` – Better Auth's request handler.
@@ -114,7 +117,7 @@ is built on first use behind a `getAuth()` function, the same pattern as
 - `src/lib/family.ts` – the family rules as plain functions over the
   database, so they can be tested without a browser: `canSignUp(email)`,
   `inviteMember`, `cancelInvitation`, `removeMember` (deletes the user's
-  sessions, passkeys and account), `renameFamily`, `listFamily`.
+  sessions and account), `renameFamily`, `listFamily`.
 - `src/app/family/actions.ts`, `src/app/account/actions.ts` – Server
   Actions; each starts with `requireOwner()` or `requireMember()`.
 - `src/app/actions.ts`, `src/app/api/plate/route.ts`,
@@ -125,7 +128,7 @@ is built on first use behind a `getAuth()` function, the same pattern as
 
 ### Infrastructure
 - **Schema and migration:** add Better Auth's tables (`user`, `session`,
-  `account`, `verification`, `passkey`) plus `family` and `invitations` to
+  `account`, `verification`) plus `family` and `invitations` to
   `src/db/schema.ts`. Each task that changes the schema generates its own
   Drizzle migration for its changes (task 1 added `drizzle/0001_accounts.sql`;
   later tasks add the next numbered file). A migration that has been merged
@@ -146,7 +149,7 @@ is built on first use behind a `getAuth()` function, the same pattern as
   production. Production and previews are fully separate (stakeholder's
   decision on #24): separate Google OAuth clients and secrets, and
   production never loads the proxy. Previews need their own sign-in variables and must
-  never use the production database. Passkeys stay tied to one domain.
+  never use the production database.
 
 ## Implementation Strategy
 
@@ -162,7 +165,7 @@ is built on first use behind a `getAuth()` function, the same pattern as
 4. **Testing.** The repo has no test runner; it uses `tsx` scripts
    (`scripts/smoke.ts`). Add `scripts/check-accounts.ts` in the same style,
    run against a temporary embedded database, and include it in
-   `npm run smoke` so CI runs it. Sign-in with Google and passkeys is
+   `npm run smoke` so CI runs it. Sign-in with Google is
    checked by hand on the deployed app.
 5. **Follow `AGENTS.md`.** Each task reads the relevant guide in
    `node_modules/next/dist/docs/` (proxy, Server Actions, Cache Components)
@@ -173,7 +176,6 @@ Risks:
   settles it.
 - The exact hook and plugin APIs should be read from the installed
   package's docs and types, not from memory.
-- Passkeys break if the production domain changes (accepted in the PRD).
 
 ## Task Breakdown Preview
 
@@ -183,7 +185,7 @@ Risks:
 | 2 | Family rules: `family` and `invitations` tables, `role`, invite-only creation hook, owner bootstrap, `src/lib/family.ts` | 1 | no |
 | 3 | Member gate: `src/lib/member.ts`, new `proxy.ts` check, replace every `requireHousehold()`, dev owner, production fail-closed; delete the passcode code | 2 | no |
 | 4 | Sign-in page with Google, sign out, and the My account page (display name) | 3 | yes, with 6 and 7 |
-| 5 | Passkeys: plugin, add and remove on My account, passkey button on sign-in; adds its assertion to the check script | 4, 7 | yes, with 6 |
+| 5 | (Moved to the `passkeys` PRD) Passkeys: plugin, add and remove on My account, passkey button on sign-in; adds its assertion to the check script | 4, 7 | yes, with 6 |
 | 6 | Family page: members, invitations, owner controls | 3 | yes, with 4, 5 and 7 |
 | 7 | Automated checks: `scripts/check-accounts.ts` in `npm run smoke` | 3 | yes, with 4 and 6 |
 | 8 | Documentation and deployment: README, `.env.example`, `docs/ARCHITECTURE.md`, Google OAuth client and Vercel variables checklist, hand check on production | 4, 5, 6, 7 | no |
@@ -199,7 +201,7 @@ of them; task 3 adds both footer links so that 4 and 6 never share a file.
   hand check, not for building.
 - The owner's email, set as `OWNER_EMAIL` on Vercel.
 - The existing Vercel project and Neon database.
-- npm packages: `better-auth`, `@better-auth/passkey`.
+- npm packages: `better-auth`.
 - No other epic. `core` and `email` depend on this one.
 
 ## Success Criteria (Technical)
@@ -210,7 +212,7 @@ of them; task 3 adds both footer links so that 4 and 6 never share a file.
   - an email that is neither the owner nor invited cannot create a user;
   - the owner email creates the family and gets role `owner`;
   - an invited email becomes a `member` and its invitation is `accepted`;
-  - removing a member deletes their sessions and passkeys, and the next
+  - removing a member deletes their sessions, and the next
     session lookup fails;
   - `inviteMember`, `cancelInvitation`, `removeMember` and `renameFamily`
     refuse a non-owner;
@@ -224,8 +226,7 @@ of them; task 3 adds both footer links so that 4 and 6 never share a file.
 - `grep -ri "HOUSEHOLD_PASSCODE\|requireHousehold" .` finds nothing outside
   git history and `.claude/`.
 - On production: Will signs in with Google as owner, invites Shannon, she
-  signs in with Google, each adds a passkey and signs in with it, and a
-  third Google account is refused.
+  signs in with Google, and a third Google account is refused.
 - `npm run dev` on a fresh clone opens the app signed in as the dev owner
   with no environment variables.
 
@@ -237,13 +238,13 @@ tasks 6 and 7 run beside 4. The one step that needs the repo owner is
 creating the Google OAuth client and setting the Vercel variables.
 
 ## Tasks Created
-- [ ] #9 - Sign-in foundation with Better Auth (parallel: false)
-- [ ] #10 - Family rules: invitations, roles and invite-only sign-up (parallel: false)
-- [ ] #11 - Member gate: replace the household passcode (parallel: false)
-- [ ] #12 - Sign-in page with Google, sign out and My account (parallel: true)
-- [ ] #13 - Passkeys: add, remove and sign in (parallel: true)
-- [ ] #14 - Family page: members, invitations and owner controls (parallel: true)
-- [ ] #15 - Automated checks for the account rules (parallel: true)
+- [x] #9 - Sign-in foundation with Better Auth (parallel: false)
+- [x] #10 - Family rules: invitations, roles and invite-only sign-up (parallel: false)
+- [x] #11 - Member gate: replace the household passcode (parallel: false)
+- [x] #12 - Sign-in page with Google, sign out and My account (parallel: true)
+- [x] #13 - Passkeys: add, remove and sign in (moved to the `passkeys` PRD)
+- [x] #14 - Family page: members, invitations and owner controls (parallel: true)
+- [x] #15 - Automated checks for the account rules (parallel: true)
 - [ ] #16 - Documentation, deployment setup and production check (parallel: false)
 
 Total tasks: 8

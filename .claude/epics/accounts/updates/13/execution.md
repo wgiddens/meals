@@ -1,13 +1,12 @@
 ## Active Streams
-- All streams (sequential, one implementation chat): started 2026-11-11T02:40Z
-  - Implementation chat: session_01DNZtwwwFqFobMUroFQC1Rp
-  - Branch: claude/issue-13-passkeys
-  - PR: https://github.com/wgiddens/meals/pull/25 (draft, opened 2026-11-11T02:55Z)
-  - Review chat: session_01DNZtwvBupwitDmjmTiNKpk (started 2026-11-11T02:55Z)
-  - Pending check-in: trig_01E9mHKePjwtqHwtTdKcKe9y (fires 2026-11-11T03:31Z; now checks the review chat)
+(none)
 
 ## Queued
 (none)
 
 ## Completed
-(none yet)
+- Moved out of the epic on 2026-11-11T03:15Z (stakeholder's decision): passkeys are now `.claude/prds/passkeys.md`.
+  - Implementation chat: session_01DNZtwwwFqFobMUroFQC1Rp (archived)
+  - Review chat: session_01DNZtwvBupwitDmjmTiNKpk (archived)
+  - Branch: claude/issue-13-passkeys, head 8fc88f1
+  - PR: https://github.com/wgiddens/meals/pull/25, parked as a draft. Review findings 1, 3, 4 and 5 fixed; finding 2 (authenticatorSelection) moved to the passkeys PRD as an open question. Needs a rebase onto `main` once accounts merges.

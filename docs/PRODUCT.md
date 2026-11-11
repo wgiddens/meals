@@ -154,7 +154,10 @@ built first:
 
 - **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
   account in one invite-only family, with an owner who manages members.
-  Sign in with Google or a passkey. Replaces the shared household passcode.
+  Sign in with Google. Replaces the shared household passcode.
+- **Passkeys (`.claude/prds/passkeys.md`), any time after accounts.** Sign
+  in with Face ID or a fingerprint instead of Google. Nothing else waits on
+  it.
 - **Email (`.claude/prds/email.md`), any time after accounts.** The app can
   send email from our own domain: invitation emails and sign-in by email
   link, so a Google account is no longer required. Nothing else waits on
