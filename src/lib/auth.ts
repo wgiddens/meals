@@ -392,7 +392,7 @@ function createAuth(db: Db) {
         verification: schema.verification,
       },
     }),
-    // No passwords: people sign in with Google (and, later, passkeys).
+    // No passwords: people sign in with Google.
     emailAndPassword: { enabled: false },
     account: {
       accountLinking: {

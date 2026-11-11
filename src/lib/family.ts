@@ -260,8 +260,8 @@ export async function cancelInvitation(actor: Actor, invitationId: string, db?: 
 /**
  * Removes a member: their sessions (so they are signed out on their next
  * request), their linked sign-in accounts, and their user row. Any other
- * table that references the user, such as passkeys, goes with the row through
- * ON DELETE CASCADE. Owner only, and the owner can never be removed.
+ * table that references the user, including ones added later, goes with the
+ * row through ON DELETE CASCADE. Owner only, and the owner can never be removed.
  */
 export async function removeMember(actor: Actor, memberId: string, db?: Db): Promise<void> {
   const conn = await resolveDb(db);

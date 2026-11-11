@@ -7,9 +7,9 @@ export const metadata = { title: "My account" };
 type SearchParams = Promise<{ saved?: string; error?: string }>;
 
 /**
- * My account: who you are signed in as, your display name, passkeys (the
- * "Passkeys" task) and sign out. src/proxy.ts has already turned away anyone
- * who is not signed in; the member is read per request inside <Suspense>.
+ * My account: who you are signed in as, your display name and sign out.
+ * src/proxy.ts has already turned away anyone who is not signed in; the
+ * member is read per request inside <Suspense>.
  */
 export default function AccountPage(props: { searchParams: SearchParams }) {
   return (
@@ -78,16 +78,6 @@ async function Account({ searchParams }: { searchParams: SearchParams }) {
             </p>
           )}
         </form>
-      </section>
-
-      {/* Passkeys: the list and "Add a passkey" go in this section (the "Passkeys" task). */}
-      <section aria-labelledby="passkeys-heading" className="card space-y-2">
-        <h2 id="passkeys-heading" className="font-semibold">
-          Passkeys
-        </h2>
-        <p className="text-sm text-stone-500">
-          Sign in with Face ID or your fingerprint. Coming soon; for now, use Google.
-        </p>
       </section>
 
       <section className="card space-y-2">

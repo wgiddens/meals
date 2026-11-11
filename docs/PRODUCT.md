@@ -140,8 +140,8 @@ is built.
 - Runs locally with zero setup (embedded Postgres); deploys to Vercel with
   its Neon Postgres integration. Hosting should stay free, or at least very
   cheap.
-- Household passcode: one shared passcode (`HOUSEHOLD_PASSCODE`) gates the
-  web app; each phone signs in once. Assistants keep their own MCP token.
+- Accounts: each of us signs in with Google to a personal account in one
+  invite-only family, managed by an owner (see Accounts under "Next").
 
 ### Next
 
@@ -152,9 +152,9 @@ approved.
 Foundation pieces come before the numbered items. Accounts, then core, are
 built first:
 
-- **Accounts (`.claude/prds/accounts.md`).** Each of us has a personal
-  account in one invite-only family, with an owner who manages members.
-  Sign in with Google. Replaces the shared household passcode.
+- **Accounts (`.claude/prds/accounts.md`). Built.** Each of us has a
+  personal account in one invite-only family, with an owner who manages
+  members. Sign in with Google. Replaced the shared passcode.
 - **Passkeys (`.claude/prds/passkeys.md`), any time after accounts.** Sign
   in with Face ID or a fingerprint instead of Google. Nothing else waits on
   it.

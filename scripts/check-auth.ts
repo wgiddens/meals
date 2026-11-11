@@ -1009,8 +1009,8 @@ async function main() {
   const missing = await familyError(family.removeMember(owner, member.id, db));
   assert(missing === "MEMBER_NOT_FOUND", `removing someone not in the family is refused (got ${missing})`);
 
-  // Every table that references the user must cascade, so rows added by later
-  // tasks (passkeys) go with the user row.
+  // Every table that references the user must cascade, so rows in tables
+  // added later go with the user row.
   const fks = (await db.execute(sql`
     select tc.table_name, rc.delete_rule
     from information_schema.referential_constraints rc
