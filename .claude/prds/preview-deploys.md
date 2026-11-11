@@ -80,8 +80,8 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
    `main`?
 3. Does the orchestrator flow change: fewer pushes (batched tracking
    commits), or tracking moved off the deployed branches?
-4. Preview database: today it is one Preview database, separate from
-   production (`docs/DEPLOY.md`). Per-preview Neon branches copy production's
+4. Preview database: the accounts setup uses one Preview database,
+   separate from production (`docs/DEPLOY.md`). Per-preview Neon branches copy production's
    rows, including sessions and Google tokens, so they are only an option if
    they branch from the Preview database, not production. Keep the one
    database, or seed previews instead?
@@ -97,6 +97,7 @@ if [ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_S
 
 - None blocking. The interim measure can be applied today; the rest can be
   planned any time.
+- `docs/DEPLOY.md`, cited above, arrives on `main` with the accounts epic.
 - Related: `accounts` (`docs/DEPLOY.md`, the fixed sign-in proxy branch
   `auth-proxy`), `custom-domain`, `neon-dev-database` and
   `neon-epic-branches`.

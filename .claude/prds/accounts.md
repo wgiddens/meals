@@ -13,8 +13,8 @@ updated: 2026-11-11T03:15:00Z
 Each person in the family gets their own account. There is one family, it is
 invite only, and its owner decides who is in it. People sign in with Google.
 There are no passwords, and this PRD sends no email: email-link sign-in and
-invitation emails are added later by the `email` PRD, and passkey sign-in by
-the `passkeys` PRD.
+invitation emails are added later by the `email` and `email-sign-in` PRDs,
+and passkey sign-in by the `passkeys` PRD.
 
 This replaces the prototype's shared household passcode, which is removed.
 It is the first thing built: `core` and every later PRD rely on it to know
@@ -119,8 +119,8 @@ Acceptance criteria:
   `member`), and the date they joined.
 - An invitation has: name, email, who invited them, when, and a state
   (pending, accepted, cancelled).
-- Identity is the verified email. This is what lets the `email` PRD later
-  add link sign-in for the same member without a second account.
+- Identity is the verified email. This is what lets the `email-sign-in` PRD
+  later add link sign-in for the same member without a second account.
 
 ### Sign-in methods
 - Google, as in story 2. No passwords and no text-message codes.
@@ -185,7 +185,7 @@ Acceptance criteria:
 - **Built first, before `core`.** The accounts epic lands on the prototype
   codebase and replaces its passcode gate; `core` then replaces the pages
   behind it.
-- **Every member needs a Google account** until the `email` PRD is built.
+- **Every member needs a Google account** until the `email-sign-in` PRD is built.
   This is accepted for Will and Shannon.
 - **One family only.** Family data is not tagged with a family id. Opening
   the app to other families later would require adding one throughout; that
@@ -196,8 +196,8 @@ Acceptance criteria:
 
 ## Out of Scope
 
-- Anything that sends email: invitation emails and email-link sign-in
-  (`email`).
+- Anything that sends email: invitation emails (`email`) and email-link
+  sign-in (`email-sign-in`).
 - Multiple families, open sign-up, or creating a second family.
 - Passkeys (`passkeys`).
 - Passwords, text-message codes, and two-step verification beyond what
