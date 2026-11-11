@@ -70,7 +70,13 @@ Implemented on branch `claude/issue-13-passkeys`; draft PR #25 into
 - 4: the stale-session message says "sign in again" (Google or a passkey).
   The up-front hint was skipped: the page doesn't read the session's
   creation time today.
-- 2 and 5: on hold pending the stakeholder.
+- 5 (the stakeholder's decision): check-accounts 11.19–11.22 assert
+  `passkeysAvailable()` with a stubbed browser: true only with WebAuthn and
+  the hostname exactly the rpID; false without WebAuthn, on another host, a
+  subdomain or a lookalike.
+- Remove control: stays visible without WebAuthn (the stakeholder's
+  decision).
+- 2 (authenticatorSelection): open with the stakeholder.
 - Rerun: typecheck, lint, smoke, build, and the browser check (19 steps).
 
 ## Not done here

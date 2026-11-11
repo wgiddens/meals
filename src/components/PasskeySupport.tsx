@@ -29,7 +29,8 @@ function subscribeNever(): () => void {
   return () => {};
 }
 
-function passkeysAvailable(rpID: string): boolean {
+/** The test behind usePasskeysAvailable(); exported for scripts/check-accounts.ts. */
+export function passkeysAvailable(rpID: string): boolean {
   if (typeof window === "undefined" || typeof window.PublicKeyCredential !== "function") return false;
   return window.location.hostname.toLowerCase() === rpID.toLowerCase();
 }

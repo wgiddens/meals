@@ -751,6 +751,41 @@ async function main() {
       `11.14 the removed member's passkey no longer signs in, and creates no account (got ${afterRemoval.status} ${afterRemoval.code ?? ""})`,
     );
 
+    // Where the browser shows passkey controls (src/components/PasskeySupport.tsx),
+    // with a stubbed browser: WebAuthn present or not, and the page's hostname.
+    const { passkeysAvailable } = await import("@/components/PasskeySupport");
+    const browserGlobal = globalThis as { window?: unknown };
+    const savedWindow = browserGlobal.window;
+    const inBrowser = (hostname: string, webAuthn: boolean, rpID: string) => {
+      browserGlobal.window = {
+        location: { hostname },
+        ...(webAuthn ? { PublicKeyCredential: function PublicKeyCredential() {} } : {}),
+      };
+      try {
+        return passkeysAvailable(rpID);
+      } finally {
+        browserGlobal.window = savedWindow;
+      }
+    };
+    assert(
+      inBrowser("localhost", true, "localhost") &&
+        inBrowser("meals.example.com", true, "meals.example.com") &&
+        inBrowser("Meals.Example.com", true, "meals.example.com"),
+      "11.19 passkey controls show when the browser has WebAuthn and the hostname is exactly the rpID",
+    );
+    assert(
+      !inBrowser("localhost", false, "localhost") && !inBrowser("meals.example.com", false, "meals.example.com"),
+      "11.20 without WebAuthn support, no passkey controls",
+    );
+    assert(
+      !inBrowser("127.0.0.1", true, "localhost") &&
+        !inBrowser("meals-abc123-fam.vercel.app", true, "meals-git-feature-fam.vercel.app") &&
+        !inBrowser("www.meals.example.com", true, "meals.example.com") &&
+        !inBrowser("meals.example.com.evil.test", true, "meals.example.com"),
+      "11.21 on any hostname other than exactly the rpID (another host, a subdomain, a lookalike), no passkey controls",
+    );
+    assert(browserGlobal.window === savedWindow && !inBrowser("localhost", true, ""), "11.22 an empty rpID shows nothing, and the stub is removed afterwards");
+
     // The relying party: the domain passkeys are bound to.
     const { passkeyRelyingParty } = await import("@/lib/auth");
     const party = (vars: Record<string, string>) => passkeyRelyingParty(vars);
