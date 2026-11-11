@@ -1,6 +1,7 @@
 ---
 name: orchestrator
 description: "Runs ccpm epics as orchestrator and project manager for the stakeholder: hands each ready task to a separate dev chat, which owns its review chat, its PR and the stakeholder's merge, then starts the next. Use when the stakeholder asks to orchestrate, run, drive or keep an epic on track, to 'take it from here' on ccpm work, to start work on an issue, close an issue or merge an epic, and on scheduled orchestrator check-ins. Builds on the ccpm skill, which defines the files, scripts and GitHub conventions. Not for a one-off standup or status question (use ccpm, from the epic worktree) or for implementing a task or defining work itself."
+disable-model-invocation: true
 ---
 
 # Orchestrator
