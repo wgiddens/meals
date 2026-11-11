@@ -4,6 +4,8 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError, createAuthMiddleware } from "better-auth/api";
 import { symmetricDecrypt } from "better-auth/crypto";
 import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
+import { genericOAuth, type GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
+import { ConnectError, connect } from "@vercel/connect/betterauth";
 import { getDb, schema, type Db } from "@/db";
 import { userRoles, type Role } from "@/db/schema";
 import { completeSignUp, signUpRole } from "@/lib/family";
@@ -371,18 +373,117 @@ function proxyPlugins(env: Env): BetterAuthPlugin[] {
     : [bindProxyHandBacksToBrowser(oauthProxySecret(env)!), proxy];
 }
 
+/**
+ * SPIKE (vercel-connect-auth, branch claude/spike-vercel-connect; never
+ * merged): Google sign-in through Vercel Connect's OAuth gateway instead of
+ * our own Google client and the OAuth proxy.
+ *
+ * On only when VERCEL_CONNECT_GOOGLE (the connector's UID or `scl_` key) is
+ * set AND this is a Vercel preview or a `vercel env pull`ed local run.
+ * Production ignores it whatever is set, so production config is unchanged.
+ */
+export const CONNECT_GOOGLE_PROVIDER_ID = "google-connect";
+
+export function connectGoogleConnector(env: Env = process.env): string | null {
+  if (env.VERCEL_ENV !== "preview" && env.VERCEL_ENV !== "development") return null;
+  if (env.NODE_ENV === "production" && env.VERCEL_ENV !== "preview") return null;
+  return env.VERCEL_CONNECT_GOOGLE?.trim() || null;
+}
+
+/**
+ * With Connect, each deployment receives its own callback, so Better Auth's
+ * base URL is the address the request came in on, restricted to this
+ * deployment's own Vercel addresses (and localhost for a local run). No
+ * fixed BETTER_AUTH_URL, no proxy.
+ */
+function connectBaseURL(env: Env): { allowedHosts: string[] } {
+  const hosts = new Set<string>();
+  for (const value of [env.VERCEL_URL, env.VERCEL_BRANCH_URL]) {
+    const origin = originOf(value);
+    if (origin?.startsWith("https://")) hosts.add(new URL(origin).host);
+  }
+  if (env.NODE_ENV !== "production") {
+    hosts.add("localhost:*");
+    hosts.add("127.0.0.1:*");
+  }
+  return { allowedHosts: [...hosts] };
+}
+
+const CONNECT_USERINFO_URL = "https://connect.vercel.com/oauth/userinfo";
+
+/**
+ * The adapter's provider, with getUserInfo re-implemented identically except
+ * that it logs what the spike needs to know, without personal data: which
+ * claims Connect returns, whether `email_verified` is present and its value,
+ * and whether `sub` looks like Google's numeric subject or something
+ * Connect-specific.
+ */
+function connectGoogleProvider(connector: string): GenericOAuthConfig {
+  const base = connect({ providerId: CONNECT_GOOGLE_PROVIDER_ID, connector });
+  return {
+    ...base,
+    getUserInfo: async (tokens) => {
+      if (!tokens.accessToken) {
+        throw new ConnectError("Missing access token for Vercel Connect userinfo request", {
+          code: "missing_access_token",
+        });
+      }
+      const response = await fetch(CONNECT_USERINFO_URL, {
+        headers: { Authorization: `Bearer ${tokens.accessToken}` },
+      });
+      if (!response.ok) {
+        console.error("[connect-spike] userinfo failed", { status: response.status });
+        throw new ConnectError("Failed to fetch Vercel Connect user info", { code: "userinfo_failed" });
+      }
+      const user = (await response.json()) as Record<string, unknown>;
+      const sub = typeof user.sub === "string" ? user.sub : String(user.sub ?? "");
+      console.info("[connect-spike] userinfo", {
+        claimKeys: Object.keys(user).sort(),
+        emailVerifiedPresent: "email_verified" in user,
+        emailVerifiedValue: user.email_verified,
+        subIsGoogleNumeric: /^\d{15,30}$/.test(sub),
+        subLength: sub.length,
+        subPrefix: sub.replace(/[0-9a-zA-Z]/g, (c) => (/\d/.test(c) ? "9" : "a")).slice(0, 6),
+        hdPresent: "hd" in user,
+      });
+      return {
+        id: sub,
+        email: user.email as string,
+        emailVerified: (user.email_verified as boolean | undefined) ?? false,
+        name: user.name as string,
+        image: user.picture as string | undefined,
+      };
+    },
+  };
+}
+
 function createAuth(db: Db) {
   const google = googleConfig();
+  const connector = connectGoogleConnector();
+  if (connector) console.info("[connect-spike] Google sign-in through Vercel Connect is on");
   return betterAuth({
     secret: authSecret(),
-    baseURL: process.env.BETTER_AUTH_URL?.trim() || undefined,
+    baseURL: connector ? connectBaseURL(process.env) : process.env.BETTER_AUTH_URL?.trim() || undefined,
     trustedOrigins: trustedOrigins(),
-    plugins: proxyPlugins(process.env),
+    plugins: connector
+      ? [genericOAuth({ config: [connectGoogleProvider(connector)] })]
+      : proxyPlugins(process.env),
     // A sign-in that fails with no error address of its own (the Google
     // button always passes one) comes back to the sign-in page on the address
     // it was on, which explains `?error=` codes, rather than Better Auth's
     // built-in error page.
-    onAPIError: { errorURL: "/sign-in" },
+    onAPIError: {
+      errorURL: "/sign-in",
+      onError(error) {
+        if (connector && error instanceof ConnectError) {
+          console.error("[connect-spike] Connect error", {
+            code: error.code,
+            status: error.status,
+            statusText: error.statusText,
+          });
+        }
+      },
+    },
     database: drizzleAdapter(db, {
       provider: "pg",
       schema: {

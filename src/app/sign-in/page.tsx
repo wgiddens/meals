@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { CONNECT_GOOGLE_PROVIDER_ID, connectGoogleConnector } from "@/lib/auth";
 import { currentMember, gateMode, safeReturnPath } from "@/lib/member";
 
 export const metadata = { title: "Sign in" };
@@ -74,7 +75,7 @@ async function SignIn({ searchParams }: { searchParams: SearchParams }) {
           {error}
         </p>
       )}
-      <GoogleSignInButton next={next} />
+      <GoogleSignInButton next={next} provider={connectGoogleConnector() ? CONNECT_GOOGLE_PROVIDER_ID : "google"} />
     </SignInCard>
   );
 }

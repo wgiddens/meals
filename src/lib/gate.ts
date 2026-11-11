@@ -24,9 +24,16 @@ function isSet(value: string | undefined): boolean {
   return Boolean(value?.trim());
 }
 
-/** Both halves of the Google client, as googleConfig() in src/lib/auth.ts requires. */
+/**
+ * Both halves of the Google client, as googleConfig() in src/lib/auth.ts
+ * requires, or (SPIKE vercel-connect-auth) a Vercel Connect connector on a
+ * preview or a `vercel env pull`ed local run, as connectGoogleConnector()
+ * requires. Production never counts the connector.
+ */
 function googleConfigured(env: Env): boolean {
-  return isSet(env.GOOGLE_CLIENT_ID) && isSet(env.GOOGLE_CLIENT_SECRET);
+  if (isSet(env.GOOGLE_CLIENT_ID) && isSet(env.GOOGLE_CLIENT_SECRET)) return true;
+  const connectEnv = env.VERCEL_ENV === "preview" || (env.VERCEL_ENV === "development" && env.NODE_ENV !== "production");
+  return connectEnv && isSet(env.VERCEL_CONNECT_GOOGLE);
 }
 
 export function gateMode(env: Env): GateMode {

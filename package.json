@@ -21,6 +21,7 @@
     "@anthropic-ai/sdk": "^1.4.0",
     "@electric-sql/pglite": "^0.5.15",
     "@modelcontextprotocol/server": "^2.4.0",
+    "@vercel/connect": "2.9.1",
     "better-auth": "~1.7.20",
     "drizzle-orm": "^0.45.4",
     "mcp-handler": "^2.3.0",

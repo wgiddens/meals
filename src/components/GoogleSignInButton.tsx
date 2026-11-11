@@ -14,7 +14,7 @@ import { authClient } from "@/lib/auth-client";
  * the preview the person started on. Better Auth checks them against its
  * trusted origins before anything is sent to Google.
  */
-export function GoogleSignInButton({ next }: { next: string }) {
+export function GoogleSignInButton({ next, provider = "google" }: { next: string; provider?: string }) {
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -25,7 +25,8 @@ export function GoogleSignInButton({ next }: { next: string }) {
     const errorPath = next === "/" ? "/sign-in" : `/sign-in?next=${encodeURIComponent(next)}`;
     try {
       const { error } = await authClient.signIn.social({
-        provider: "google",
+        // "google", or (SPIKE vercel-connect-auth) the Vercel Connect provider.
+        provider,
         callbackURL: `${origin}${next}`,
         errorCallbackURL: `${origin}${errorPath}`,
       });
