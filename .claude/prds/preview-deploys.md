@@ -2,7 +2,7 @@
 name: preview-deploys
 description: Rethink how Vercel preview deployments are used so the project stays inside the free plan's daily limit and previews stay safe and useful
 status: backlog
-created: 2026-11-11T03:35:00Z
+created: 2026-11-11T03:28:00Z
 ---
 
 # PRD: preview-deploys
@@ -41,7 +41,8 @@ As the stakeholder, a preview is built only when someone will look at it.
 Acceptance criteria:
 - Commits that only change `.claude/`, `docs/` or Markdown files don't
   build.
-- The rule for which branches and pushes build is written down and
+- The rule for which branches and pushes build is written down in
+  `docs/DEPLOY.md` (which today says every pull request gets a preview) and
   enforced by configuration, not by habit.
 
 ### 2. Production is never blocked by previews
@@ -61,9 +62,14 @@ Acceptance criteria:
 
 ## Interim measure (in place before this PRD is built)
 
-A project-wide Ignored Build Step in Vercel (Settings → Git) skips builds
-when a commit changes nothing outside `.claude/`, `docs/` and Markdown
-files.
+A project-wide Ignored Build Step in Vercel (Settings → Git) skips a build
+only when nothing outside `.claude/`, `docs/` and Markdown files changed
+since the branch's last deployed commit (`$VERCEL_GIT_PREVIOUS_SHA`). When
+there is no previous deployed commit, or it can't be compared, it builds:
+
+```bash
+[ -n "$VERCEL_GIT_PREVIOUS_SHA" ] && git diff --quiet "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- . ':(exclude).claude' ':(exclude)docs' ':(exclude)*.md'
+```
 
 ## Open Questions
 
@@ -73,8 +79,11 @@ files.
    `main`?
 3. Does the orchestrator flow change: fewer pushes (batched tracking
    commits), or tracking moved off the deployed branches?
-4. Preview database: one shared Preview database, Neon branch per preview,
-   or none (previews that need data use a seed)?
+4. Preview database: today it is one Preview database, separate from
+   production (`docs/DEPLOY.md`). Per-preview Neon branches copy production's
+   rows, including sessions and Google tokens, so they are only an option if
+   they branch from the Preview database, not production. Keep the one
+   database, or seed previews instead?
 5. Is a paid plan worth it later, and at what point?
 6. How does this interact with `custom-domain` and the `auth-proxy` branch?
 
@@ -85,5 +94,8 @@ files.
 
 ## Dependencies
 
-- None. The interim measure can be applied today; the rest can be planned
-  any time.
+- None blocking. The interim measure can be applied today; the rest can be
+  planned any time.
+- Related: `accounts` (`docs/DEPLOY.md`, the fixed sign-in proxy branch
+  `auth-proxy`), `custom-domain`, `neon-dev-database` and
+  `neon-epic-branches`.

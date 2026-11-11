@@ -92,8 +92,8 @@ string is stored, and cleanup.
 - A database branch per epic (`neon-epic-branches`).
 - Removing the embedded database.
 - Running the Neon service itself locally.
-- Branches for Vercel preview deployments (the Vercel integration may
-  already handle this; see open questions).
+- Branches and databases for Vercel preview deployments
+  (`preview-deploys`).
 
 ## Dependencies
 
@@ -110,7 +110,8 @@ string is stored, and cleanup.
 3. Should the dev branch be long-lived per developer, temporary per session,
    or per git branch?
 4. Does the Vercel Neon integration already create a branch per preview
-   deployment, and should local work reuse that?
+   deployment? (Preview databases belong to `preview-deploys`; here, only
+   whether local work could reuse one.)
 5. Should the embedded database remain the default for `npm run dev`, or
    become the fallback only?
 6. How do cloud agent sessions get a Neon API key safely?
