@@ -212,9 +212,10 @@ these changes:
    sync for new task files and update changed issue bodies as in per-task
    step 7.
 8. **Close,** after the stakeholder merges the PR (or, for a spike, once
-   its findings are passed on): archive the definition and review chats, delete the pending
-   check-in (`claude-code-remote:delete_trigger`), and unsubscribe from the
-   PR. New or changed tasks then go through the per-task loop.
+   its findings are passed on): archive the definition and review chats,
+   delete the pending check-in (`claude-code-remote:delete_trigger`), and
+   unsubscribe from the PR. New or changed tasks then go through the
+   per-task loop.
 
 ## Epic completion
 When every task is closed (this replaces ccpm `sync.md`, "Merging an Epic"):
