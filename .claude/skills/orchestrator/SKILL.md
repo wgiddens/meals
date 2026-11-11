@@ -50,8 +50,9 @@ skill only when they say to. Rules say what to do, not why.
 - **Keep your context small:**
   - To check a chat, use `claude-code-remote:get_session` and, if you need
     what it said, only its latest `result` event
-    (`claude-code-remote:list_events` with `kinds: ["result"]`). Never read
-    a full event log.
+    (`claude-code-remote:list_events` with `kinds: ["result"]` and
+    `limit: 100`; if none comes back, page back once with `before_id`).
+    Never read a full event log.
   - Take only the ids you need from what `archive_session`, `list_sessions`
     and `list_triggers` return, and ignore the rest of the records.
   - Subscribe only to a PR you opened yourself.
@@ -74,8 +75,10 @@ skill only when they say to. Rules say what to do, not why.
    `in-progress.sh` from its root, never from `main`.
 3. For every `in-progress` task, read
    `.claude/epics/<epic>/updates/<N>/execution.md` (session ids, PR number,
-   check-in id). Check the dev chat as in "Keep your context small" before
-   doing anything else.
+   check-in id). What isn't committed there yet, find instead: the review
+   chat by `list_sessions` title `Review: #<N>`, the PR by its head branch,
+   the check-in with `list_triggers`. Check the dev chat as in "Keep your
+   context small" before doing anything else.
 4. Find open definition chats with `claude-code-remote:list_sessions`
    (`mine: true`, titles starting `Define: `) and check them the same way.
 
@@ -98,9 +101,10 @@ Chats send you one line at a time. Act on each:
 - **"blocked: …"** or **"waiting on stakeholder: …"** (with a chat link):
   pass it to the stakeholder in one line with the link, or answer it if it
   is about the flow rather than the product.
-- **"PR #N opened, waiting on stakeholder"**: record the PR number and
-  review session id in `execution.md` (with the next bookkeeping commit),
-  and tell the stakeholder in one line with the PR link.
+- **"PR #N opened, waiting on stakeholder"**: add the PR number and
+  review session id to `execution.md`, to commit with the next bookkeeping
+  push, and tell the stakeholder in one line with the PR link.
+- **"spike done: …"**: pass the stakeholder the line and the chat link.
 - **"task complete, PR #N merged"**: go to per-task step 5. For a
   definition or epic chat ("definition complete", "epic complete"), go to
   its close step.
@@ -146,8 +150,10 @@ Use ccpm `execute.md`, "Issue Analysis" and "Starting an Issue" (preflight
 The dev chat reviews, fixes, opens the PR and reports. At each check-in,
 check it as in "Keep your context small". If it has failed, stopped
 without reporting or been quiet for well over an hour, read its latest
-result and nudge it or tell the stakeholder. Schedule the next check-in
-until it reports the merge.
+result and nudge it or tell the stakeholder. Schedule the next check-in,
+45-50 minutes out, until it reports the PR open. After that, silence is
+normal while the PR waits for the stakeholder: schedule one check-in a
+day that only looks for a failed session.
 
 ### 5. Close
 After the dev chat reports the merge, use ccpm `sync.md`, "Closing an
@@ -166,6 +172,8 @@ Issue", with these changes:
   match (the task file minus its frontmatter).
 - Archive the dev and review chats (`claude-code-remote:archive_session`)
   and delete any pending check-in (`claude-code-remote:delete_trigger`).
+- Tell any definition chat waiting on this task
+  (`claude-code-remote:send_message`) that it has closed.
 - Go back to step 1.
 
 ### Defects found after a task merged
@@ -193,9 +201,9 @@ Issue", with these changes:
    task's `<N>.md` waits for that task to close, or goes to the stakeholder
    first. Say so in the brief when it applies. Other definition work may
    run alongside the per-task loop.
-5. **A spike with no PR** sends you its findings. Pass them to the
-   stakeholder and start any definition work they lead to once the
-   stakeholder agrees.
+5. **A spike with no PR** sends you "spike done: …" with its chat link,
+   where its findings are. Pass the line and link to the stakeholder and
+   start any definition work they lead to once the stakeholder agrees.
 6. **After a decomposition merges,** create `epic/<name>` and its worktree
    from `main` if they don't exist. Run ccpm `sync.md`, "Epic Sync", from
    the worktree, skipping Step 5's branch creation and the Neon step, and
@@ -203,8 +211,8 @@ Issue", with these changes:
    as bookkeeping. For changed tasks on an epic already synced, re-run the
    sync for new task files and update changed issue bodies as in per-task
    step 5.
-7. **Close,** after the chat reports the merge (or, for a spike, once its
-   findings are passed on): archive the definition and review chats and
+7. **Close,** after the chat reports the merge (or, for a spike, once the
+   stakeholder has read its findings): archive the definition and review chats and
    delete the pending check-in. New or changed tasks then go through the
    per-task loop.
 
