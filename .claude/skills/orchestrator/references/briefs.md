@@ -52,7 +52,8 @@ because their branch may hold an older copy.
 >   conclusions. Schedule a fallback check-in for yourself with
 >   `claude-code-remote:send_later`, about 45 minutes out. At the
 >   check-in, check the review chat with `get_session` and only its latest
->   result; start a new one if it failed. Delete the check-in
+>   result; start a new one if it failed, otherwise schedule the next
+>   check-in. Delete the check-in
 >   (`claude-code-remote:delete_trigger`) once the review reports no
 >   blockers.
 > - Check every finding against the code yourself. Fix every confirmed

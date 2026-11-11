@@ -77,7 +77,8 @@ skill only when they say to. Rules say what to do, not why.
    `.claude/epics/<epic>/updates/<N>/execution.md` (session ids, PR number,
    check-in id). What isn't committed there yet, find instead: the review
    chat by `list_sessions` title `Review: #<N>`, the PR by its head branch,
-   the check-in with `list_triggers`. Check the dev chat as in "Keep your
+   the check-in with `list_triggers` (the one whose `persistent_session_id`
+   is your session). Check the dev chat as in "Keep your
    context small" before doing anything else.
 4. Find open definition chats with `claude-code-remote:list_sessions`
    (`mine: true`, titles starting `Define: `) and check them the same way.
@@ -173,7 +174,8 @@ Issue", with these changes:
 - Archive the dev and review chats (`claude-code-remote:archive_session`)
   and delete any pending check-in (`claude-code-remote:delete_trigger`).
 - Tell any definition chat waiting on this task
-  (`claude-code-remote:send_message`) that it has closed.
+  (`claude-code-remote:send_message`) that it has closed. If you don't
+  know which, check the open `Define: ` chats' latest results.
 - Go back to step 1.
 
 ### Defects found after a task merged
@@ -212,7 +214,7 @@ Issue", with these changes:
    sync for new task files and update changed issue bodies as in per-task
    step 5.
 7. **Close,** after the chat reports the merge (or, for a spike, once the
-   stakeholder has read its findings): archive the definition and review chats and
+   stakeholder replies to its findings or starts the follow-up work): archive the definition and review chats and
    delete the pending check-in. New or changed tasks then go through the
    per-task loop.
 
