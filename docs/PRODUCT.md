@@ -166,6 +166,9 @@ built first:
   sign-in by email link (`email-sign-in`), so a Google account is no longer
   required, and invitation expiry and re-send (`email-invite-status`).
   Nothing else waits on them.
+- **Preview deploys (`.claude/prds/preview-deploys.md`), soon.** Decide
+  which pushes build a Vercel preview so we stay inside the free plan's
+  daily limit, and keep previews off the production database.
 - **Core (`.claude/prds/core.md`).** Replace the prototype with the
   foundation everything else needs: the favourites list of dinners (name,
   effort, ingredients), the allergy list as an absolute filter, and simple
