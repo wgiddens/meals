@@ -7,6 +7,7 @@ import { oAuthProxy } from "better-auth/plugins/oauth-proxy";
 import { getDb, schema, type Db } from "@/db";
 import { userRoles, type Role } from "@/db/schema";
 import { completeSignUp, signUpRole } from "@/lib/family";
+import { spikeBaseURL, spikeConnectPlugin } from "@/lib/spike-connect";
 
 /**
  * Accounts and sign-in, provided by Better Auth and stored in our own
@@ -375,9 +376,9 @@ function createAuth(db: Db) {
   const google = googleConfig();
   return betterAuth({
     secret: authSecret(),
-    baseURL: process.env.BETTER_AUTH_URL?.trim() || undefined,
+    baseURL: spikeBaseURL(process.env),
     trustedOrigins: trustedOrigins(),
-    plugins: proxyPlugins(process.env),
+    plugins: [...proxyPlugins(process.env), spikeConnectPlugin(db)],
     // A sign-in that fails with no error address of its own (the Google
     // button always passes one) comes back to the sign-in page on the address
     // it was on, which explains `?error=` codes, rather than Better Auth's

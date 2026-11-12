@@ -36,6 +36,8 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   if (
     pathname === SIGN_IN_PATH ||
+    pathname === "/spike/connect" || // THROWAWAY SPIKE debug page
+
     pathname.startsWith("/api/auth/") ||
     pathname === "/api/mcp" ||
     pathname.startsWith("/api/mcp/") ||
